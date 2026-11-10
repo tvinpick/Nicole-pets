@@ -145,6 +145,14 @@ def main() -> None:
     for name in ["pose_sit", "pose_lie", "pose_sleep", "pose_stand"]:
         src = np.asarray(Image.open(os.path.join(CAT, "pose", name + ".png")).convert("RGBA"))
         info[name] = anchors(src)
+    # front/back walking rigs: fill copies of their parts as well
+    for folder in ("front", "back"):
+        for fn in sorted(os.listdir(os.path.join(CAT, folder))):
+            if not fn.endswith(".png") or any(k in fn for k in ("eyes", "mouth", "nose", "whisker", "blush", "tongue", "tail_")):
+                continue
+            src = np.asarray(Image.open(os.path.join(CAT, folder, fn)).convert("RGBA"))
+            Image.fromarray(fill_only(src), "RGBA").save(os.path.join(OUT, fn[:-4] + "_fill.png"), optimize=True)
+            info[fn[:-4]] = anchors(src)
     info["front_view"] = make_front_view()
     with open(os.path.join(OUT, "anchors.json"), "w") as f:
         json.dump(info, f, indent=1)

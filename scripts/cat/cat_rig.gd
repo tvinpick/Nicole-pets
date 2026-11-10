@@ -96,10 +96,17 @@ var _head_flip: float = 1.0
 var _turn_t: float = -1.0
 var _turn_from: float = 1.0
 var _front_visible: bool = false
-var _front: Sprite2D
-const FRONT_TEX_PATH := "res://assets/characters/cat/rig/front_view.png"
-const FRONT_CENTER := Vector2(380, 975)     # body centre x / floor line in front_view.png
-const FRONT_HEIGHT := 859.0                 # floor -> ear tips in front_view.png
+## Views: side rig (_group) for walking left/right, front rig for walking towards the
+## viewer, back rig for walking away (towards the wall).
+enum View { SIDE, FRONT, BACK }
+var view: View = View.SIDE
+var _view_from: View = View.SIDE
+var _view_t: float = -1.0
+const VIEW_FADE := 0.22
+var _front_rig: CatFrontalRig
+var _back_rig: CatFrontalRig
+## walking velocity in this node's local px/s (world velocity / depth scale)
+var walk_velocity: Vector2 = Vector2.ZERO
 ## turn = short pause, side squash, whole cat in front view, side view the other way
 const TURN_PAUSE := 0.12
 const TURN_SQUASH := 0.07
@@ -237,13 +244,16 @@ func _build() -> void:
 		add_child(s)
 		_pose_sprites[pose_name] = s
 
-	_front = Sprite2D.new()
-	_front.name = "FrontView"
-	_front.texture = _tex(FRONT_TEX_PATH)
-	_front.centered = false
-	_front.offset = -FRONT_CENTER
-	_front.visible = false
-	add_child(_front)
+	_front_rig = CatFrontalRig.new()
+	_front_rig.name = "FrontRig"
+	_front_rig.setup(false, _make_tail_line(true), _make_tail_line(false))
+	_front_rig.visible = false
+	add_child(_front_rig)
+	_back_rig = CatFrontalRig.new()
+	_back_rig.name = "BackRig"
+	_back_rig.setup(true, _make_tail_line(true), _make_tail_line(false))
+	_back_rig.visible = false
+	add_child(_back_rig)
 
 	_group = CanvasGroup.new()
 	_group.name = "Rig"
@@ -362,7 +372,23 @@ func _joint_rig(l: Leg) -> Vector2:
 # --- public API -------------------------------------------------------------------------
 
 func is_busy() -> bool:
-	return _turn_t >= 0.0 or _trans_t >= 0.0 or not _pose_queue.is_empty()
+	return _turn_t >= 0.0 or _trans_t >= 0.0 or not _pose_queue.is_empty() or _view_t >= 0.0
+
+
+## Switches between side / front / back view with a short cross-fade (whole cat at once).
+## new_facing: side direction to use when the side view comes back (0 = keep).
+func set_view(v: View, new_facing: float = 0.0) -> void:
+	if new_facing != 0.0 and v == View.SIDE and view != View.SIDE:
+		facing = signf(new_facing)
+	if v == view:
+		return
+	_view_from = view
+	view = v
+	_view_t = 0.0
+
+
+func is_view_changing() -> bool:
+	return _view_t >= 0.0
 
 
 func is_turning() -> bool:
@@ -404,6 +430,8 @@ func make_happy() -> void:
 ## Bounding box of the visible cat in this node's local space.
 func hit_rect() -> Rect2:
 	var e: Vector3 = POSE_EXTENTS[current_pose]
+	if view != View.SIDE:
+		e = Vector3(-240, 240, 880)
 	var x0: float = e.x if facing > 0.0 else -e.y
 	var x1: float = e.y if facing > 0.0 else -e.x
 	return Rect2(x0 * rig_scale, -e.z * rig_scale, (x1 - x0) * rig_scale, e.z * rig_scale)
@@ -419,6 +447,13 @@ func _update_rig(delta: float) -> void:
 	_time += delta
 	_update_timers(delta)
 	_update_pose_transition(delta)
+
+	# the side legs follow the horizontal speed, the front/back legs the depth speed
+	walk_speed = absf(walk_velocity.x) / rig_scale if view == View.SIDE else 0.0
+	if _view_t >= 0.0:
+		_view_t += delta / VIEW_FADE
+		if _view_t >= 1.0:
+			_view_t = -1.0
 
 	# walking blend
 	var walking: bool = walk_speed > 1.0
@@ -461,20 +496,65 @@ func _update_rig(delta: float) -> void:
 	_pose_legs(delta)
 	_pose_tail()
 	_apply()
-	_apply_front_view()
+	_apply_views(delta)
 
 
-func _apply_front_view() -> void:
-	_front.visible = _front_visible
+func _view_node(v: View) -> CanvasItem:
+	match v:
+		View.FRONT:
+			return _front_rig
+		View.BACK:
+			return _back_rig
+	return _group
+
+
+func _apply_views(delta: float) -> void:
+	# weights: during a cross-fade the incoming view is fully opaque underneath and the
+	# outgoing one fades out on top -> the cat never becomes see-through
+	var w: Dictionary[View, float] = {View.SIDE: 0.0, View.FRONT: 0.0, View.BACK: 0.0}
 	if _front_visible:
-		_group.visible = false
-		var p: float = clampf((_turn_t - TURN_PAUSE - TURN_SQUASH) / TURN_FRONT, 0.0, 1.0)
-		var pop: float = 1.0 + 0.03 * sin(p * PI)
-		var sc: float = rig_scale * _stand_height_rig / FRONT_HEIGHT
-		_front.scale = Vector2(sc / pop, sc * pop)
-		_front.position = Vector2.ZERO
-	elif current_pose == POSE_STAND and _trans_t < 0.0:
-		_group.visible = true
+		w[View.FRONT] = 1.0
+	elif _view_t >= 0.0:
+		w[view] = 1.0
+		w[_view_from] = 1.0 - _ease(clampf(_view_t, 0.0, 1.0))
+		move_child(_view_node(_view_from), -1)
+	else:
+		w[view] = 1.0
+	var eye: StringName = _eye_key()
+	var twitch: float = 0.0
+	if _ear_t >= 0.0:
+		twitch = sin(_ear_t * PI * 3.0) * (1.0 - _ear_t) * 0.35
+	var happy: float = _tail_up
+	var flick: float = 0.0
+	if _tail_flick_t >= 0.0:
+		flick = sin(_tail_flick_t * TAU) * (1.0 - _tail_flick_t)
+	for r: CatFrontalRig in [_front_rig, _back_rig]:
+		var rv: View = View.BACK if r.is_back else View.FRONT
+		var a: float = w[rv]
+		r.visible = a > 0.0
+		r.modulate.a = a
+		if not r.visible:
+			r.walk_speed = 0.0
+			continue
+		var sc: float = rig_scale * _stand_height_rig / r.stand_height
+		r.scale = Vector2(sc, sc)
+		r.walk_speed = absf(walk_velocity.y) / sc if view == rv else 0.0
+		if _front_visible and rv == View.FRONT:
+			var p: float = clampf((_turn_t - TURN_PAUSE - TURN_SQUASH) / TURN_FRONT, 0.0, 1.0)
+			var pop: float = 1.0 + 0.03 * sin(p * PI)
+			r.scale = Vector2(sc / pop, sc * pop)
+		r.animate(delta, eye, twitch, _ear_which, happy, flick)
+	if current_pose == POSE_STAND and _trans_t < 0.0:
+		_group.visible = w[View.SIDE] > 0.0
+		_group.modulate.a = w[View.SIDE]
+
+
+func _eye_key() -> StringName:
+	if _happy_t >= 0.0:
+		return &"happy"
+	if _blink_t >= 0.0:
+		return &"half" if (_blink_t < 0.3 or _blink_t > 0.7) else &"closed"
+	return &"open"
 
 
 func _ease(t: float) -> float:
@@ -682,12 +762,7 @@ func _apply() -> void:
 	for p: Part in [_head, _ear_near, _ear_far]:
 		_set_part(p, head_xf * p.xf)
 	# face features in head space
-	var eye_key: StringName = &"open"
-	if _happy_t >= 0.0:
-		eye_key = &"happy"
-	elif _blink_t >= 0.0:
-		eye_key = &"half" if (_blink_t < 0.3 or _blink_t > 0.7) else &"closed"
-	_eye.texture = _eye_tex[eye_key]
+	_eye.texture = _eye_tex[_eye_key()]
 	_mouth.texture = _mouth_tex[&"smile" if _happy_t >= 0.0 else &"closed"]
 	var hx: Transform2D = head_xf * _head.xf
 	_eye.transform = hx * Transform2D(0.0, Vector2.ONE, 0.0, Vector2(286, 182) - HEAD_PIVOT)
@@ -705,7 +780,7 @@ func _apply() -> void:
 	_group.scale = Vector2.ONE * rig_scale
 	# shadow follows the visible pose (blended during transitions)
 	var e: Vector3 = POSE_EXTENTS[current_pose]
-	if _front_visible:
+	if _front_visible or view != View.SIDE:
 		e = Vector3(-230, 230, 860)
 	if _trans_t >= 0.0:
 		var e2: Vector3 = POSE_EXTENTS[_trans_to]
@@ -726,7 +801,7 @@ func _set_part(p: Part, xf: Transform2D) -> void:
 
 func _update_pose_transition(delta: float) -> void:
 	if _trans_t < 0.0:
-		if _pose_queue.is_empty() or _turn_t >= 0.0:
+		if _pose_queue.is_empty() or _turn_t >= 0.0 or view != View.SIDE or _view_t >= 0.0:
 			_refresh_pose_visuals(current_pose, 1.0)
 			return
 		if current_pose == POSE_STAND and (_walk_weight > 0.0 or _settling >= 0.0):

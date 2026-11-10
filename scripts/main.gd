@@ -61,15 +61,22 @@ func _dev_capture() -> void:
 				cat.walk_to(cat.position + Vector2(700.0, 0.0))
 			elif a.begins_with("--back"):
 				cat.walk_to(cat.position + Vector2(-400.0, 0.0))
-			elif a.begins_with("--deep"):
-				cat.walk_to(cat.position + Vector2(60.0, -130.0))
+			elif a.begins_with("--view="):
+				cat.rig.set_view(CatRig.View.FRONT if a.ends_with("front") else CatRig.View.BACK)
+				cat.set_process(false)
+			elif a.begins_with("--up"):
+				cat.walk_to(cat.position + Vector2(0.0, -150.0))
+			elif a.begins_with("--down"):
+				cat.walk_to(cat.position + Vector2(0.0, 100.0))
+			elif a.begins_with("--diag"):
+				cat.walk_to(cat.position + Vector2(-260.0, 100.0))
 			elif a.begins_with("--happy"):
 				cat.on_tapped()
 			elif a.begins_with("--still"):
 				cat.set_process(false)
 	_frame += 1
 	if a_follow():
-		camera.position.x = cat.position.x
+		camera.position = cat.position + Vector2(0.0, -80.0)
 	var save_now: bool = _frame == _shot_frames or (_shot_every > 0 and _frame % _shot_every == 0)
 	if save_now:
 		await RenderingServer.frame_post_draw

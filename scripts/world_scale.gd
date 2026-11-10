@@ -18,8 +18,11 @@ const GIRL_HEIGHT_CM: float = 115.0
 const GIRL_WALL_FRACTION: float = 0.45
 const PX_PER_CM: float = WALL_HEIGHT_PX * GIRL_WALL_FRACTION / GIRL_HEIGHT_CM
 
-## Standing cat up to the ear tips: ~13% of the wall, about a third of the girl.
-const CAT_HEIGHT_CM: float = 33.0
+## Standing cat up to the ear tips. Real-life proportion would be 33 cm (~13% of the
+## wall, a third of the girl); by request the game cat is twice that for readability.
+const CAT_REAL_HEIGHT_CM: float = 33.0
+const CAT_SIZE_FACTOR: float = 2.0
+const CAT_HEIGHT_CM: float = CAT_REAL_HEIGHT_CM * CAT_SIZE_FACTOR
 
 ## Perspective on the floor: 90% at the wall, 100% at the bottom of the room/screen.
 const DEPTH_SCALE_AT_WALL: float = 0.9

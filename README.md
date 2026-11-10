@@ -10,13 +10,14 @@ Android-игра для ребёнка 6 лет (Godot 4.7.2, GDScript с тип
 - `scripts/room.gd` — бесшовные стена/пол, окно с заглушкой неба (`sky_placeholder.gdshader`).
 - `scripts/camera_rig.gd` — свайп = прокрутка, щипок/колесо = плавный зум, короткое касание = tap.
 - `scripts/cat/cat_rig.gd` — риг кошки из деталей `side/` + готовые позы `pose/`.
+- `scripts/cat/cat_frontal_rig.gd` — ракурсы спереди (`front/`) и сзади (`back/`) для ходьбы к нам / к стене.
 - `scripts/cat/cat.gd` — поведение (гуляет, сидит, лежит, спит, реагирует на касания).
 - `tools/process_room.py`, `tools/process_cat.py` — подготовка текстур (numpy, scipy, pillow).
   Исходники (`kids_room_*.png`, `kitten_cutout_pngs.zip`, `side/`, `pose/`) не меняются.
 
 ## Масштаб персонажей
 `scripts/world_scale.gd`: высота стены (пол → карниз) = 647 px, девочка 115 см ≈ 45% стены,
-отсюда `PX_PER_CM`. Кошка 33 см до кончиков ушей ≈ 13% стены. `CHARACTER_SCALE` — одна
+отсюда `PX_PER_CM`. Кошка: реалистично 33 см (≈13% стены), в игре ×2 (`CAT_SIZE_FACTOR`). `CHARACTER_SCALE` — одна
 ручка для всех персонажей. Перспектива: 90% у стены → 100% у нижнего края.
 
 ## Сборка
