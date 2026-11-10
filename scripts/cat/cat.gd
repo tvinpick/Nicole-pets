@@ -374,17 +374,17 @@ func _process_hunt(delta: float) -> void:
 		2:
 			# wiggling the bottom, then the jump
 			if rig.is_hunt_ready():
-				_jump = rig.pounce()
-				_hunt_t = 0.0
 				_jump_from = position.x
 				_jump_to = ball.position.x - rig.facing * 0.15 * h
+				_jump = rig.pounce(absf(_jump_to - _jump_from) / depth)
+				_hunt_t = 0.0
 				_ball_kicked = false
 				_hunt_step = 3
 		3:
-			# flies during the jump frame; the ball rolls away
+			# horizontal motion is linear during the flight; the rig draws the arc
 			var u: float = clampf((_hunt_t - _jump.x) / _jump.y, 0.0, 1.0)
-			position.x = lerpf(_jump_from, _jump_to, u * u * (3.0 - 2.0 * u))
-			if not _ball_kicked and u > 0.6:
+			position.x = lerpf(_jump_from, _jump_to, u)
+			if not _ball_kicked and u > 0.85:
 				_ball_kicked = true
 				ball.kick(Vector2(rig.facing * randf_range(260.0, 420.0), randf_range(-70.0, 70.0)))
 			if rig.current_action() == &"" and not rig.is_busy():

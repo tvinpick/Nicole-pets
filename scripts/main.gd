@@ -93,6 +93,7 @@ func _dev_capture() -> void:
 			elif a.begins_with("--hunt"):
 				cat.position = Vector2(Room.BALL_START.x + 420.0, Room.BALL_START.y - 2.0)
 				cat.call("_go_hunt", false)
+				camera.position = Room.BALL_START + Vector2(160.0, -60.0)
 			elif a.begins_with("--stretch"):
 				cat.rig.stretch()
 			elif a.begins_with("--up"):
