@@ -135,45 +135,95 @@ def make_front_view() -> dict:
             "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]}
 
 
-# 4-frame walk sheets (front = towards the viewer, back = away). Frames are cut by the
-# transparent gaps, aligned by the paw line (lowest pixel) and the head centre.
-WALK_CANVAS = {"front": (420, 520), "back": (420, 640)}
-WALK_MARGIN = 8
+# Frame sheets: frames are cut by the transparent gaps and aligned on a common canvas:
+# the paw line (lowest pixel) at the canvas bottom, x by the head centre ("head") or by
+# the body centre ("torso" = centroid of the 45..80% height band).
+# k = sheet px -> walk-side sheet px (matched by the cat's BODY, not the picture size;
+# the eating cat has its head down, so its picture is lower but the cat is the same).
+SHEETS = {
+    # name: (source, mode, k)
+    "walk_front": ("cat_walk_front.png", "head", None),   # sized by ear height in game
+    "walk_back": ("cat_walk_back.png", "head", None),
+    "walk_side": ("cat_walk_side.png", "torso", 1.0),
+    "eat_side": ("cat_eat_side.png", "torso", 1.0),
+    "happy_sit": ("cat_happy_sit.png", "torso", 0.62),
+    "pose_sit": ("pose/pose_sit.png", "torso", 1.0),
+    "pose_lie": ("pose/pose_lie.png", "torso", 0.98),
+    "pose_sleep": ("pose/pose_sleep.png", "torso", 0.91),
+}
+FRAME_MARGIN = 8
 
 
-def make_walk_frames() -> dict:
-    info = {}
-    for view, (cw, ch) in WALK_CANVAS.items():
-        sheet = np.asarray(Image.open(os.path.join(CAT, f"cat_walk_{view}.png")).convert("RGBA"))
-        a = sheet[..., 3] > 20
-        col = a.any(axis=0)
-        runs, start = [], None
-        for x, v in enumerate(col):
-            if v and start is None:
-                start = x
-            elif not v and start is not None:
+def _cut(sheet_a: np.ndarray) -> list:
+    col = sheet_a.any(axis=0)
+    runs, start = [], None
+    for x, v in enumerate(col):
+        if v and start is None:
+            start = x
+        elif not v and start is not None:
+            if x - start > 15:
                 runs.append((start, x))
-                start = None
-        if start is not None:
-            runs.append((start, len(col)))
-        assert len(runs) == 4, f"{view}: expected 4 frames, found {len(runs)}"
-        heights = []
-        for i, (x0, x1) in enumerate(runs, start=1):
+            start = None
+    if start is not None:
+        runs.append((start, len(col)))
+    return runs
+
+
+def make_frame_sets() -> dict:
+    info = {}
+    for name, (src, mode, k) in SHEETS.items():
+        sheet = np.asarray(Image.open(os.path.join(CAT, src)).convert("RGBA"))
+        a = sheet[..., 3] > 20
+        runs = _cut(a)
+        if src.startswith("pose/"):
+            runs = [(runs[0][0], runs[-1][1])]
+        frames = []
+        for x0, x1 in runs:
             sub = a[:, x0:x1]
             ys, xs = np.nonzero(sub)
             top, bottom = ys.min(), ys.max()
-            head = sub[top:top + int((bottom - top) * 0.35)]
-            hcx = x0 + np.nonzero(head)[1].mean()
-            # place: head centre -> canvas centre, paw line -> canvas bottom - margin
-            dx = int(round(cw / 2 - hcx))
-            dy = int(ch - WALK_MARGIN - 1 - bottom)
+            h = bottom - top
+            if mode == "head":
+                band = sub[top:top + int(h * 0.35)]
+                b0 = top
+            else:
+                b0 = top + int(h * 0.45)
+                band = sub[b0:top + int(h * 0.8)]
+            cx = x0 + np.nonzero(band)[1].mean()
+            frames.append((x0, x1, top, bottom, cx))
+        left = max(cx - x0 for x0, x1, t, b, cx in frames)
+        right = max(x1 - cx for x0, x1, t, b, cx in frames)
+        half = int(np.ceil(max(left, right))) + FRAME_MARGIN
+        height = int(max(b - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN
+        cw, ch = 2 * half, height
+        heights = []
+        for i, (x0, x1, top, bottom, cx) in enumerate(frames, start=1):
             out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+            dx = int(round(half - cx))
+            dy = int(ch - FRAME_MARGIN - 1 - bottom)
             out.alpha_composite(Image.fromarray(sheet[:, x0:x1].copy(), "RGBA"), (x0 + dx, dy))
-            out.save(os.path.join(OUT, f"walk_{view}_{i}.png"), optimize=True)
+            out.save(os.path.join(OUT, f"{name}_{i}.png"), optimize=True)
             heights.append(int(bottom - top))
-        info[f"walk_{view}"] = {"canvas": [cw, ch], "paw_line_y": ch - WALK_MARGIN,
-                                "centre_x": cw // 2, "frame_heights": heights}
+        info[name] = {"frames": len(frames), "canvas": [cw, ch], "paw_line_y": ch - FRAME_MARGIN,
+                      "centre_x": half, "frame_heights": heights, "k": k}
+    _write_gd(info)
     return info
+
+
+def _write_gd(info: dict) -> None:
+    """Frame-set table for the game (scripts/cat/cat_frames.gd)."""
+    lines = ["class_name CatFrames", "extends RefCounted",
+             "## GENERATED by tools/process_cat.py - do not edit by hand.",
+             "## name -> [frame count, canvas size, paw line y, centre x, frame-1 height, k]",
+             "## k = sheet px -> walk-side sheet px (body-matched); 0 = sized by its own height.",
+             "", "const SETS: Dictionary = {"]
+    for name, d in info.items():
+        cw, ch = d["canvas"]
+        lines.append(f'\t"{name}": [{d["frames"]}, Vector2({cw}, {ch}), {d["paw_line_y"]}.0, '
+                     f'{d["centre_x"]}.0, {d["frame_heights"][0]}.0, {d["k"] or 0.0}],')
+    lines.append("}")
+    with open(os.path.join(ROOT, "scripts", "cat", "cat_frames.gd"), "w") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def main() -> None:
@@ -195,7 +245,7 @@ def main() -> None:
             Image.fromarray(fill_only(src), "RGBA").save(os.path.join(OUT, fn[:-4] + "_fill.png"), optimize=True)
             info[fn[:-4]] = anchors(src)
     info["front_view"] = make_front_view()
-    info.update(make_walk_frames())
+    info.update(make_frame_sets())
     with open(os.path.join(OUT, "anchors.json"), "w") as f:
         json.dump(info, f, indent=1)
     print("ok", len(PARTS), "fill textures")

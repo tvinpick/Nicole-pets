@@ -336,76 +336,43 @@
   ]
  },
  "pose_sit": {
-  "size": [
-   507,
-   607
+  "frames": 1,
+  "canvas": [
+   540,
+   602
   ],
-  "bbox": [
-   10,
-   11,
-   494,
-   596
+  "paw_line_y": 594,
+  "centre_x": 270,
+  "frame_heights": [
+   586
   ],
-  "top": [
-   339.1,
-   11.0
-  ],
-  "bottom": [
-   198.3,
-   596.0
-  ],
-  "centre": [
-   278.7,
-   339.9
-  ]
+  "k": 1.0
  },
  "pose_lie": {
-  "size": [
-   855,
-   471
+  "frames": 1,
+  "canvas": [
+   876,
+   466
   ],
-  "bbox": [
-   11,
-   11,
-   843,
-   459
+  "paw_line_y": 458,
+  "centre_x": 438,
+  "frame_heights": [
+   450
   ],
-  "top": [
-   601.9,
-   11.0
-  ],
-  "bottom": [
-   119.6,
-   459.0
-  ],
-  "centre": [
-   435.6,
-   266.7
-  ]
+  "k": 0.98
  },
  "pose_sleep": {
-  "size": [
-   621,
-   404
+  "frames": 1,
+  "canvas": [
+   648,
+   399
   ],
-  "bbox": [
-   11,
-   11,
-   610,
-   393
+  "paw_line_y": 391,
+  "centre_x": 324,
+  "frame_heights": [
+   383
   ],
-  "top": [
-   384.8,
-   11.0
-  ],
-  "bottom": [
-   253.9,
-   393.0
-  ],
-  "centre": [
-   300.1,
-   230.5
-  ]
+  "k": 0.91
  },
  "pose_stand": {
   "size": [
@@ -1141,31 +1108,81 @@
   ]
  },
  "walk_front": {
+  "frames": 4,
   "canvas": [
-   420,
-   520
+   406,
+   514
   ],
-  "paw_line_y": 512,
-  "centre_x": 210,
+  "paw_line_y": 506,
+  "centre_x": 203,
   "frame_heights": [
    494,
    498,
    498,
    495
-  ]
+  ],
+  "k": null
  },
  "walk_back": {
+  "frames": 4,
   "canvas": [
-   420,
-   640
+   432,
+   629
   ],
-  "paw_line_y": 632,
-  "centre_x": 210,
+  "paw_line_y": 621,
+  "centre_x": 216,
   "frame_heights": [
    608,
    613,
    613,
    605
-  ]
+  ],
+  "k": null
+ },
+ "walk_side": {
+  "frames": 4,
+  "canvas": [
+   554,
+   541
+  ],
+  "paw_line_y": 533,
+  "centre_x": 277,
+  "frame_heights": [
+   525,
+   523,
+   525,
+   525
+  ],
+  "k": 1.0
+ },
+ "eat_side": {
+  "frames": 4,
+  "canvas": [
+   510,
+   512
+  ],
+  "paw_line_y": 504,
+  "centre_x": 255,
+  "frame_heights": [
+   496,
+   496,
+   496,
+   495
+  ],
+  "k": 1.0
+ },
+ "happy_sit": {
+  "frames": 2,
+  "canvas": [
+   716,
+   853
+  ],
+  "paw_line_y": 845,
+  "centre_x": 358,
+  "frame_heights": [
+   837,
+   834
+  ],
+  "k": 0.62
  }
 }

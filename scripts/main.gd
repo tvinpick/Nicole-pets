@@ -12,6 +12,13 @@ const START_ZOOM: float = 2.25
 
 
 func _ready() -> void:
+	# PLACEHOLDER food bowl until there is bowl art (y-sorted with the cat)
+	var bowl := FoodBowlPlaceholder.new()
+	bowl.name = "FoodBowlPlaceholder"
+	bowl.position = Room.FOOD_BOWL_POS
+	bowl.scale = Vector2.ONE * room.depth_scale(bowl.position.y)
+	$Actors.add_child(bowl)
+	room.food_bowl = bowl
 	camera.room_size = Vector2(Room.ROOM_WIDTH, Room.ROOM_HEIGHT)
 	# start closer (~1.5x), aligned to the bottom of the room, around the cat
 	camera.start_view(START_ZOOM, cat.position.x)
@@ -73,6 +80,9 @@ func _dev_capture() -> void:
 			elif a.begins_with("--view="):
 				cat.rig.set_view(CatRig.View.FRONT if a.ends_with("front") else CatRig.View.BACK)
 				cat.set_process(false)
+			elif a.begins_with("--eat"):
+				cat.position = Room.FOOD_BOWL_POS + Vector2(-500.0, -3.0)
+				cat.call("_go_eat")
 			elif a.begins_with("--up"):
 				cat.walk_to(cat.position + Vector2(0.0, -150.0))
 			elif a.begins_with("--down"):

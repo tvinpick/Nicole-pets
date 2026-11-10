@@ -20,6 +20,9 @@ const WALK_Y_MIN: float = 740.0
 const WALK_Y_MAX: float = 1005.0
 const WALK_X_MARGIN: float = 120.0
 
+## PLACEHOLDER food bowl (created by main.gd inside the y-sorted Actors node).
+const FOOD_BOWL_POS := Vector2(4050.0, 860.0)
+var food_bowl: Node2D
 var window_sprite: Sprite2D
 var sky_sprite: Sprite2D
 

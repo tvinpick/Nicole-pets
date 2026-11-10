@@ -1,9 +1,10 @@
 class_name Cat
 extends Node2D
-## Cat behaviour: wanders on the floor, sits, lies down, sleeps, wakes up.
-## Tap on the floor -> walks there (debug), tap on the cat -> happy.
+## Cat behaviour: wanders on the floor, sits, lies down, sleeps, wakes up, sometimes
+## goes to the food bowl and eats. Tap on the floor -> walks there (debug),
+## tap on the cat -> stops, sits and purrs, then continues what it was doing.
 
-enum Mode { IDLE, WALK, SIT, LIE, SLEEP }
+enum Mode { IDLE, WALK, SIT, LIE, SLEEP, EAT }
 
 @export var walk_speed: float = 120.0          ## world px / s at depth scale 1
 ## View choice by the main direction of movement (with hysteresis against flicker):
@@ -12,6 +13,10 @@ enum Mode { IDLE, WALK, SIT, LIE, SLEEP }
 const FRONTAL_ENTER_RATIO: float = 1.15   ## |dy|/|dx| above this -> front/back view
 const FRONTAL_EXIT_RATIO: float = 0.87    ## |dy|/|dx| below this -> side view
 @export var room_path: NodePath
+## Placeholder food bowl (see Room.food_bowl); the cat eats there 3-5 s.
+const EAT_TIME_MIN: float = 3.0
+const EAT_TIME_MAX: float = 5.0
+const EAT_CHANCE: float = 0.18
 
 var room: Room
 var rig: CatRig
@@ -23,6 +28,11 @@ var _mode_timer: float = 3.0
 var _speed_now: float = 0.0
 var _after_stand: Callable = Callable()
 var _happy_after_stand: bool = false
+var _going_to_eat: bool = false
+var _resume_walk: bool = false
+var _resume_target: Vector2
+var _resume_eat: float = 0.0
+var _eat_pending: float = 0.0
 
 
 func _ready() -> void:
@@ -47,10 +57,18 @@ func contains_point(world_pos: Vector2) -> bool:
 
 
 func on_tapped() -> void:
+	if rig.is_happy():
+		return
 	if rig.current_pose != CatRig.POSE_STAND or mode in [Mode.SIT, Mode.LIE, Mode.SLEEP]:
 		_happy_after_stand = true
 		_stand_up()
 		return
+	# remember what the cat was doing, to continue after purring
+	if mode == Mode.WALK:
+		_resume_walk = true
+		_resume_target = _target
+	elif mode == Mode.EAT:
+		_resume_eat = rig.stop_eating()
 	_stop_walking()
 	rig.make_happy()
 	mode = Mode.IDLE
@@ -77,6 +95,18 @@ func _process(delta: float) -> void:
 			_process_walk(delta)
 		Mode.SIT, Mode.LIE, Mode.SLEEP:
 			_process_rest(delta)
+		Mode.EAT:
+			if _eat_pending > 0.0:
+				# wait for the turn towards the bowl, then eat
+				if not rig.is_busy():
+					rig.start_eating(_eat_pending)
+					_eat_pending = 0.0
+			elif not rig.is_eating() and not rig.is_happy():
+				# done: step away from the bowl
+				mode = Mode.IDLE
+				var away: float = -rig.facing
+				_begin_walk(room.clamp_walk_point(position + Vector2(away * randf_range(250.0, 500.0),
+						randf_range(-40.0, 40.0))))
 	if mode != Mode.WALK:
 		_speed_now = move_toward(_speed_now, 0.0, delta * 400.0)
 		rig.walk_velocity = Vector2.ZERO
@@ -95,15 +125,25 @@ func _process_idle(delta: float) -> void:
 		_has_target = false
 		_begin_walk(_target)
 		return
-	if rig.is_happy():
+	# continue after purring
+	if _resume_eat > 0.0:
+		mode = Mode.EAT
+		rig.start_eating(_resume_eat)
+		_resume_eat = 0.0
+		return
+	if _resume_walk:
+		_resume_walk = false
+		_begin_walk(_resume_target, _going_to_eat)
 		return
 	_mode_timer -= delta
 	if _mode_timer > 0.0:
 		return
 	var r: float = randf()
-	if r < 0.55:
+	if r < EAT_CHANCE and room.food_bowl:
+		_go_eat()
+	elif r < 0.6:
 		_begin_walk(_random_floor_point())
-	elif r < 0.85:
+	elif r < 0.87:
 		_rest(Mode.SIT)
 	else:
 		_mode_timer = randf_range(2.0, 4.0)  # just stand and look around
@@ -171,8 +211,18 @@ func _random_floor_point() -> Vector2:
 	return room.clamp_walk_point(Vector2(Room.ROOM_WIDTH * 0.5, position.y))
 
 
+## Walks to the bowl and eats there (placeholder bowl, see Room).
+func _go_eat() -> void:
+	var bowl: Vector2 = room.food_bowl.position
+	# stand beside the bowl so that the lowered head is above it
+	var side: float = -1.0 if position.x < bowl.x else 1.0
+	var spot := Vector2(bowl.x + side * 0.42 * rig.cat_height * room.depth_scale(bowl.y), bowl.y - 3.0)
+	_begin_walk(spot, true)
+
+
 ## The cat walks straight to the point (any direction).
-func _begin_walk(p: Vector2) -> void:
+func _begin_walk(p: Vector2, to_eat: bool = false) -> void:
+	_going_to_eat = to_eat
 	_path.clear()
 	if p.distance_to(position) < 12.0:
 		if absf(p.x - position.x) > 2.0 and rig.view == CatRig.View.SIDE:
@@ -192,6 +242,15 @@ func _view_for(d: Vector2) -> CatRig.View:
 	if not frontal:
 		return CatRig.View.SIDE
 	return CatRig.View.FRONT if d.y > 0.0 else CatRig.View.BACK
+
+
+func _start_eating() -> void:
+	var bowl: Vector2 = room.food_bowl.position
+	var dir: float = signf(bowl.x - position.x)
+	if dir != 0.0 and dir != rig.facing:
+		rig.turn_to(dir)
+	mode = Mode.EAT
+	_eat_pending = randf_range(EAT_TIME_MIN, EAT_TIME_MAX)
 
 
 func _stop_walking() -> void:
@@ -239,6 +298,9 @@ func _process_walk(delta: float) -> void:
 		rig.walk_velocity = Vector2.ZERO
 		# stand sideways again (all resting poses are side views)
 		rig.set_view(CatRig.View.SIDE)
+		if _going_to_eat:
+			_going_to_eat = false
+			_start_eating()
 		return
 	position += to_target / dist * minf(_speed_now * delta, dist)
 	_drive_rig()
