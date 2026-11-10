@@ -256,7 +256,6 @@ func _start_eating() -> void:
 func _stop_walking() -> void:
 	_path.clear()
 	rig.walk_velocity = Vector2.ZERO
-	rig.set_view(CatRig.View.SIDE)
 	if mode == Mode.WALK:
 		mode = Mode.IDLE
 		_mode_timer = randf_range(2.0, 5.0)
@@ -272,15 +271,11 @@ func _process_walk(delta: float) -> void:
 	if want == CatRig.View.SIDE:
 		var dir_x: float = signf(to_target.x)
 		if rig.view != CatRig.View.SIDE:
-			# from front/back into side view: the cross-fade picks the new side directly
+			# from front/back straight to the side sheet, facing the walking direction
 			rig.set_view(CatRig.View.SIDE, dir_x)
-		elif dir_x != 0.0 and dir_x != rig.facing and not rig.is_view_changing():
-			# walking along the room the other way: stop, turn (via front view), go on
-			_speed_now = move_toward(_speed_now, 0.0, delta * 600.0)
-			if _speed_now <= 0.0:
-				rig.turn_to(dir_x)
-			_drive_rig()
-			return
+		elif dir_x != 0.0 and dir_x != rig.facing:
+			# the other way along the room: instant mirror
+			rig.turn_to(dir_x)
 	elif rig.view != want:
 		rig.set_view(want)
 	if rig.is_turning():
@@ -296,8 +291,7 @@ func _process_walk(delta: float) -> void:
 		mode = Mode.IDLE
 		_mode_timer = randf_range(2.5, 6.0)
 		rig.walk_velocity = Vector2.ZERO
-		# stand sideways again (all resting poses are side views)
-		rig.set_view(CatRig.View.SIDE)
+		# keeps standing in the view it walked in (front after walking down, etc.)
 		if _going_to_eat:
 			_going_to_eat = false
 			_start_eating()

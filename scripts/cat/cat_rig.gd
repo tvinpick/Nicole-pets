@@ -40,8 +40,6 @@ const FADE_VIEW := 0.24
 const FADE_POSE := 0.45
 const FADE_HAPPY := 0.35
 const FADE_EAT := 0.3
-const TURN_PAUSE := 0.08
-const TURN_HOLD := 0.1
 const HAPPY_TIME := 2.6
 ## Shadow width per look, as a part of the cat height.
 const SHADOW_W: Dictionary[StringName, float] = {
@@ -83,9 +81,6 @@ var _phase: float = 0.0
 var _walk_weight: float = 0.0
 var _pose_queue: Array[StringName] = []
 var _pose_target: StringName = &""
-var _turn_t: float = -1.0
-var _turn_stage: int = 0
-var _turn_dir: float = 1.0
 var _happy_t: float = -1.0
 var _eat_left: float = -1.0
 var _shadow: Sprite2D
@@ -152,12 +147,12 @@ func _build_shadow() -> void:
 # --- public API ----------------------------------------------------------------------
 
 func is_busy() -> bool:
-	return _fade_t >= 0.0 or _turn_t >= 0.0 or not _pose_queue.is_empty() \
+	return _fade_t >= 0.0 or not _pose_queue.is_empty() \
 			or _pose_target != &"" or _happy_t >= 0.0 or _eat_left >= 0.0
 
 
 func is_turning() -> bool:
-	return _turn_t >= 0.0
+	return false   # turning is an instant mirror
 
 
 func is_view_changing() -> bool:
@@ -180,15 +175,14 @@ func set_view(v: View, new_facing: float = 0.0) -> void:
 	if v == view and _look == _view_look(v):
 		return
 	view = v
-	_set_look(_view_look(v), FADE_VIEW)
+	# switching between walk sheets is immediate (no intermediate front picture)
+	_set_look(_view_look(v), 0.0)
 
 
+## Left <-> right: an instant mirror of the side pictures (no pause, no front picture).
 func turn_to(dir: float) -> void:
-	if signf(dir) == facing or _turn_t >= 0.0 or view != View.SIDE:
-		return
-	_turn_dir = signf(dir)
-	_turn_t = 0.0
-	_turn_stage = 0
+	if dir != 0.0:
+		facing = signf(dir)
 
 
 ## Goes through intermediate poses (stand <-> sit <-> lie <-> sleep).
@@ -252,7 +246,6 @@ func _process(delta: float) -> void:
 
 func _update(delta: float) -> void:
 	_time += delta
-	_update_turn(delta)
 	_update_happy_and_eat(delta)
 	_update_poses()
 	if _fade_t >= 0.0:
@@ -265,22 +258,6 @@ func _update(delta: float) -> void:
 				_pose_target = &""
 				pose_changed.emit(current_pose)
 	_animate(delta)
-
-
-func _update_turn(delta: float) -> void:
-	# pause -> front picture -> side picture the other way (cross-fades)
-	if _turn_t < 0.0:
-		return
-	_turn_t += delta
-	if _turn_stage == 0 and _turn_t >= TURN_PAUSE:
-		_turn_stage = 1
-		_set_look(&"walk_front", FADE_VIEW)
-	elif _turn_stage == 1 and _turn_t >= TURN_PAUSE + FADE_VIEW + TURN_HOLD:
-		_turn_stage = 2
-		facing = _turn_dir
-		_set_look(&"walk_side", FADE_VIEW)
-	elif _turn_stage == 2 and _fade_t < 0.0:
-		_turn_t = -1.0
 
 
 func _update_happy_and_eat(delta: float) -> void:
@@ -303,11 +280,12 @@ func _update_happy_and_eat(delta: float) -> void:
 
 
 func _update_poses() -> void:
-	if _pose_queue.is_empty() or _pose_target != &"" or _fade_t >= 0.0 or _turn_t >= 0.0 \
-			or _happy_t >= 0.0 or _eat_left >= 0.0 or view != View.SIDE:
+	if _pose_queue.is_empty() or _pose_target != &"" or _fade_t >= 0.0 \
+			or _happy_t >= 0.0 or _eat_left >= 0.0:
 		return
 	if current_pose == POSE_STAND and walk_velocity.length() > 1.0:
 		return
+	view = View.SIDE   # resting poses are side pictures (cross-fade from any view)
 	_pose_target = _pose_queue.pop_front()
 	_set_look(POSE_LOOK[_pose_target], FADE_POSE)
 
@@ -323,6 +301,12 @@ func _view_look(v: View) -> StringName:
 
 func _set_look(look_name: StringName, fade: float) -> void:
 	if look_name == _look and _fade_t < 0.0:
+		return
+	if fade <= 0.0:
+		_look = look_name
+		_look_from = &""
+		_fade_t = -1.0
+		_show_only(look_name)
 		return
 	if _fade_t >= 0.0 and _look_from != &"" and _look_from != look_name:
 		_looks[_look_from].holder.visible = false
