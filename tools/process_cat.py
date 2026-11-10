@@ -150,7 +150,14 @@ SHEETS = {
     "pose_sit": ("pose/pose_sit.png", "torso", 1.0),
     "pose_lie": ("pose/pose_lie.png", "torso", 0.98),
     "pose_sleep": ("pose/pose_sleep.png", "torso", 0.91),
+    # k from the standing frame (floor -> ear tips) vs walk-side frame 1 (525 px)
+    "stretch": ("cat_stretch.png", "torso", 525.0 / 564.0),
+    "hunt": ("cat_hunt.png", "torso", 1.0),
+    "pounce": ("cat_pounce.png", "torso", 525.0 / 449.0),
 }
+# a frame whose lowest pixel is this far above the sheet's floor line is airborne:
+# it keeps its height above the floor (e.g. the pounce jump)
+AIRBORNE_GAP = 30
 FRAME_MARGIN = 8
 
 
@@ -195,12 +202,15 @@ def make_frame_sets() -> dict:
         right = max(x1 - cx for x0, x1, t, b, cx in frames)
         half = int(np.ceil(max(left, right))) + FRAME_MARGIN
         height = int(max(b - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN
+        floor = max(b for x0, x1, t, b, cx in frames)
+        height = int(max(floor - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN
         cw, ch = 2 * half, height
         heights = []
         for i, (x0, x1, top, bottom, cx) in enumerate(frames, start=1):
             out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
             dx = int(round(half - cx))
-            dy = int(ch - FRAME_MARGIN - 1 - bottom)
+            ground = bottom if floor - bottom < AIRBORNE_GAP else floor
+            dy = int(ch - FRAME_MARGIN - 1 - ground)
             out.alpha_composite(Image.fromarray(sheet[:, x0:x1].copy(), "RGBA"), (x0 + dx, dy))
             out.save(os.path.join(OUT, f"{name}_{i}.png"), optimize=True)
             heights.append(int(bottom - top))

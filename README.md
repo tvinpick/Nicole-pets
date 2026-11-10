@@ -11,7 +11,7 @@ Android-игра для ребёнка 6 лет (Godot 4.7.2, GDScript с тип
 - `scripts/camera_rig.gd` — свайп = прокрутка, щипок/колесо = плавный зум, короткое касание = tap.
 - `scripts/cat/cat_rig.gd` — кошка только из целых кадров: ходьба боком/к нам/от нас, еда, радость, позы `pose/`; смена — плавный переход.
 - `scripts/cat/cat_frames.gd` — таблица кадров (генерируется `tools/process_cat.py`).
-- `scripts/food_bowl_placeholder.gd` — ВРЕМЕННАЯ миска-заглушка.
+- `scripts/food_bowl_placeholder.gd`, `scripts/ball_placeholder.gd` — ВРЕМЕННЫЕ миска и мячик (заглушки).
 - `scripts/cat/cat.gd` — поведение (гуляет, сидит, лежит, спит, реагирует на касания).
 - `tools/process_room.py`, `tools/process_cat.py` — подготовка текстур (numpy, scipy, pillow).
   Исходники (`kids_room_*.png`, `kitten_cutout_pngs.zip`, `side/`, `pose/`) не меняются.

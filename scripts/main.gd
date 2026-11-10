@@ -19,6 +19,13 @@ func _ready() -> void:
 	bowl.scale = Vector2.ONE * room.depth_scale(bowl.position.y)
 	$Actors.add_child(bowl)
 	room.food_bowl = bowl
+	# PLACEHOLDER toy ball
+	var ball := BallPlaceholder.new()
+	ball.name = "BallPlaceholder"
+	ball.room = room
+	ball.position = Room.BALL_START
+	$Actors.add_child(ball)
+	room.ball = ball
 	camera.room_size = Vector2(Room.ROOM_WIDTH, Room.ROOM_HEIGHT)
 	# start closer (~1.5x), aligned to the bottom of the room, around the cat
 	camera.start_view(START_ZOOM, cat.position.x)
@@ -34,7 +41,7 @@ func _on_tapped(world_pos: Vector2) -> void:
 	if cat.contains_point(world_pos):
 		cat.on_tapped()
 	elif room.is_floor_point(world_pos):
-		cat.walk_to(world_pos)
+		cat.on_floor_tapped(world_pos)
 
 
 func _process(_delta: float) -> void:
@@ -83,6 +90,11 @@ func _dev_capture() -> void:
 			elif a.begins_with("--eat"):
 				cat.position = Room.FOOD_BOWL_POS + Vector2(-500.0, -3.0)
 				cat.call("_go_eat")
+			elif a.begins_with("--hunt"):
+				cat.position = Vector2(Room.BALL_START.x + 420.0, Room.BALL_START.y - 2.0)
+				cat.call("_go_hunt", false)
+			elif a.begins_with("--stretch"):
+				cat.rig.stretch()
 			elif a.begins_with("--up"):
 				cat.walk_to(cat.position + Vector2(0.0, -150.0))
 			elif a.begins_with("--down"):

@@ -23,6 +23,9 @@ const WALK_X_MARGIN: float = 120.0
 ## PLACEHOLDER food bowl (created by main.gd inside the y-sorted Actors node).
 const FOOD_BOWL_POS := Vector2(4050.0, 860.0)
 var food_bowl: Node2D
+## PLACEHOLDER toy ball (created by main.gd inside the y-sorted Actors node).
+const BALL_START := Vector2(2550.0, 930.0)
+var ball: BallPlaceholder
 var window_sprite: Sprite2D
 var sky_sprite: Sprite2D
 

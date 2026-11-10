@@ -30,7 +30,13 @@ const FRAMES_DIR := "res://assets/characters/cat/rig/"
 const WALK_SIDE_HEIGHT := 525.0
 ## Looks drawn sideways (mirrored when facing left).
 const SIDE_LOOKS: Array[StringName] = [&"walk_side", &"eat_side", &"happy_sit",
-		&"pose_sit", &"pose_lie", &"pose_sleep"]
+		&"pose_sit", &"pose_lie", &"pose_sleep", &"stretch", &"hunt", &"pounce"]
+## One-shot actions: frame durations (s). After the last frame -> standing side view.
+const STRETCH_TIMES: Array[float] = [0.9, 1.3, 1.4]      # sleepy, stretch, yawn
+const POUNCE_TIMES: Array[float] = [0.2, 0.25, 0.35, 0.7]  # stand, crouch, jump, land
+const HUNT_CREEP_FRAME := 0.38      # frames 1-2 while sneaking
+const HUNT_WIGGLE_FRAME := 0.17     # frames 3-4 = one wiggle of the bottom
+const FADE_ACTION := 0.25
 ## Body travel per 4-frame walk cycle (two steps), as a part of the cat height.
 ## Front/back keep the values that already looked right.
 const CYCLE_SIDE := 0.75
@@ -45,6 +51,7 @@ const HAPPY_TIME := 2.6
 const SHADOW_W: Dictionary[StringName, float] = {
 	&"walk_side": 0.95, &"walk_front": 0.6, &"walk_back": 0.6, &"eat_side": 0.9,
 	&"happy_sit": 0.65, &"pose_sit": 0.7, &"pose_lie": 1.35, &"pose_sleep": 1.0,
+	&"stretch": 1.05, &"hunt": 1.0, &"pounce": 0.95,
 }
 ## Head of the side picture relative to the body centre (part of the cat height):
 ## while mixing side and front/back pictures the frontal one is shifted towards it.
@@ -83,6 +90,11 @@ var _pose_queue: Array[StringName] = []
 var _pose_target: StringName = &""
 var _happy_t: float = -1.0
 var _eat_left: float = -1.0
+## current one-shot / hunting action: &"stretch", &"hunt", &"pounce" or &""
+var _action: StringName = &""
+var _act_t: float = 0.0
+var _hunt_stage: int = 0            # 1 = sneaking, 2 = wiggling, 3 = wiggles done
+var _wiggles: int = 0
 var _shadow: Sprite2D
 var _hearts: CatHearts
 
@@ -147,7 +159,7 @@ func _build_shadow() -> void:
 # --- public API ----------------------------------------------------------------------
 
 func is_busy() -> bool:
-	return _fade_t >= 0.0 or not _pose_queue.is_empty() \
+	return _fade_t >= 0.0 or not _pose_queue.is_empty() or _action != &"" \
 			or _pose_target != &"" or _happy_t >= 0.0 or _eat_left >= 0.0
 
 
@@ -206,6 +218,7 @@ func make_happy() -> void:
 	if current_pose != POSE_STAND or _happy_t >= 0.0:
 		return
 	view = View.SIDE
+	_action = &""
 	_happy_t = 0.0
 	_set_look(&"happy_sit", FADE_HAPPY)
 
@@ -217,6 +230,93 @@ func start_eating(seconds: float) -> void:
 	view = View.SIDE
 	_eat_left = seconds
 	_set_look(&"eat_side", FADE_EAT)
+
+
+## Wakes up properly: sleepy standing, big stretch, yawn (cat_stretch), then stands.
+func stretch() -> void:
+	if current_pose != POSE_STAND:
+		return
+	view = View.SIDE
+	_start_action(&"stretch")
+
+
+## Hunting: sneaks low (frames 1-2) until hunt_wiggle(); see is_hunt_ready().
+func start_hunt() -> void:
+	if current_pose != POSE_STAND:
+		return
+	view = View.SIDE
+	_start_action(&"hunt")
+	_hunt_stage = 1
+
+
+## Wiggles the bottom `times` times (frames 3-4), then is_hunt_ready() becomes true.
+func hunt_wiggle(times: int) -> void:
+	if _action != &"hunt":
+		return
+	_hunt_stage = 2
+	_wiggles = times
+	_act_t = 0.0
+
+
+func is_hunt_ready() -> bool:
+	return _action == &"hunt" and _hunt_stage == 3
+
+
+## Jump (cat_pounce): stand, crouch, in the air, happy landing. Returns the time
+## from now until the jump frame and the jump frame's length (for the controller).
+func pounce() -> Vector2:
+	_start_action(&"pounce", 0.12)
+	return Vector2(POUNCE_TIMES[0] + POUNCE_TIMES[1], POUNCE_TIMES[2])
+
+
+func current_action() -> StringName:
+	return _action
+
+
+func cancel_action() -> void:
+	if _action != &"":
+		_action = &""
+		_set_look(&"walk_side", FADE_ACTION)
+
+
+func _start_action(look_name: StringName, fade: float = FADE_ACTION) -> void:
+	_action = look_name
+	_act_t = 0.0
+	_set_look(look_name, fade)
+
+
+func _action_frame(times: Array[float], t: float) -> int:
+	var acc: float = 0.0
+	for i in times.size():
+		acc += times[i]
+		if t < acc:
+			return i
+	return times.size() - 1
+
+
+func _update_action(delta: float) -> void:
+	if _action == &"":
+		return
+	_act_t += delta
+	var total: float = -1.0
+	match _action:
+		&"stretch":
+			total = _sum(STRETCH_TIMES)
+		&"pounce":
+			total = _sum(POUNCE_TIMES)
+		&"hunt":
+			if _hunt_stage == 2 and _act_t >= HUNT_WIGGLE_FRAME * 2.0 * float(_wiggles):
+				_hunt_stage = 3
+	if total > 0.0 and _act_t >= total:
+		_action = &""
+		_set_look(&"walk_side", FADE_ACTION)
+
+
+func _sum(a: Array[float]) -> float:
+	var t: float = 0.0
+	for v in a:
+		t += v
+	return t
 
 
 ## Interrupts eating; returns the remaining eating time.
@@ -247,6 +347,7 @@ func _process(delta: float) -> void:
 func _update(delta: float) -> void:
 	_time += delta
 	_update_happy_and_eat(delta)
+	_update_action(delta)
 	_update_poses()
 	if _fade_t >= 0.0:
 		_fade_t += delta / _fade_len
@@ -281,7 +382,7 @@ func _update_happy_and_eat(delta: float) -> void:
 
 func _update_poses() -> void:
 	if _pose_queue.is_empty() or _pose_target != &"" or _fade_t >= 0.0 \
-			or _happy_t >= 0.0 or _eat_left >= 0.0:
+			or _happy_t >= 0.0 or _eat_left >= 0.0 or _action != &"":
 		return
 	if current_pose == POSE_STAND and walk_velocity.length() > 1.0:
 		return
@@ -383,6 +484,17 @@ func _pose_look(look_name: StringName, alpha: float, incoming: bool) -> void:
 		&"eat_side":
 			# 1-2-3-4: frames 2 and 4 are chewing
 			frame = int(_time * 3.5) % 4
+		&"stretch":
+			frame = _action_frame(STRETCH_TIMES, _act_t) if _action == &"stretch" else 0
+		&"pounce":
+			frame = _action_frame(POUNCE_TIMES, _act_t) if _action == &"pounce" else 3
+		&"hunt":
+			if _hunt_stage >= 2:
+				frame = 2 + int(_act_t / HUNT_WIGGLE_FRAME) % 2   # bottom wiggle
+				if _hunt_stage == 3:
+					frame = 3
+			else:
+				frame = int(_act_t / HUNT_CREEP_FRAME) % 2        # sneaking
 		&"happy_sit":
 			# slow purring sway between the two pictures
 			frame = int(_time / 0.7) % 2

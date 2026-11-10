@@ -1184,5 +1184,52 @@
    834
   ],
   "k": 0.62
+ },
+ "stretch": {
+  "frames": 3,
+  "canvas": [
+   662,
+   582
+  ],
+  "paw_line_y": 574,
+  "centre_x": 331,
+  "frame_heights": [
+   564,
+   531,
+   531
+  ],
+  "k": 0.9308510638297872
+ },
+ "hunt": {
+  "frames": 4,
+  "canvas": [
+   582,
+   542
+  ],
+  "paw_line_y": 534,
+  "centre_x": 291,
+  "frame_heights": [
+   526,
+   509,
+   488,
+   495
+  ],
+  "k": 1.0
+ },
+ "pounce": {
+  "frames": 4,
+  "canvas": [
+   642,
+   485
+  ],
+  "paw_line_y": 477,
+  "centre_x": 321,
+  "frame_heights": [
+   449,
+   416,
+   362,
+   419
+  ],
+  "k": 1.1692650334075725
  }
 }

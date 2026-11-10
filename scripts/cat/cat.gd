@@ -1,10 +1,11 @@
 class_name Cat
 extends Node2D
 ## Cat behaviour: wanders on the floor, sits, lies down, sleeps, wakes up, sometimes
-## goes to the food bowl and eats. Tap on the floor -> walks there (debug),
-## tap on the cat -> stops, sits and purrs, then continues what it was doing.
+## goes to the food bowl and eats, stretches after sleeping, hunts the toy ball.
+## Tap on the floor -> walks there (debug); tap near the ball -> the ball rolls there
+## and the cat chases it; tap on the cat -> stops, sits and purrs, then continues.
 
-enum Mode { IDLE, WALK, SIT, LIE, SLEEP, EAT }
+enum Mode { IDLE, WALK, SIT, LIE, SLEEP, EAT, HUNT }
 
 @export var walk_speed: float = 120.0          ## world px / s at depth scale 1
 ## View choice by the main direction of movement (with hysteresis against flicker):
@@ -17,6 +18,13 @@ const FRONTAL_EXIT_RATIO: float = 0.87    ## |dy|/|dx| below this -> side view
 const EAT_TIME_MIN: float = 3.0
 const EAT_TIME_MAX: float = 5.0
 const EAT_CHANCE: float = 0.18
+## Play with the placeholder ball (see Room.ball).
+const HUNT_CHANCE: float = 0.2
+const HUNT_START_DIST: float = 1.6      ## start sneaking this far (x cat height)
+const POUNCE_DIST: float = 0.8          ## jump from this far (x cat height)
+const SNEAK_SPEED: float = 26.0         ## world px/s
+const CHASE_SPEED_MULT: float = 1.8     ## runs after a rolling ball
+const BALL_TAP_RADIUS: float = 260.0    ## a floor tap this close to the ball moves the ball
 
 var room: Room
 var rig: CatRig
@@ -33,6 +41,19 @@ var _resume_walk: bool = false
 var _resume_target: Vector2
 var _resume_eat: float = 0.0
 var _eat_pending: float = 0.0
+var _stretch_after_stand: bool = false
+var _walk_after_stretch: bool = false
+var _going_to_hunt: bool = false
+var _hunt_after_stand: bool = false
+var _resume_hunt: bool = false
+var _speed_mult: float = 1.0
+var _hunt_step: int = 0
+var _hunt_t: float = 0.0
+var _jump: Vector2 = Vector2.ZERO          # time until the jump frame, jump frame length
+var _jump_from: float = 0.0
+var _jump_to: float = 0.0
+var _ball_kicked: bool = false
+var _ball_dest: Vector2 = Vector2.INF
 
 
 func _ready() -> void:
@@ -67,12 +88,39 @@ func on_tapped() -> void:
 	if mode == Mode.WALK:
 		_resume_walk = true
 		_resume_target = _target
+		_resume_hunt = _going_to_hunt
+		_resume_walk = not _going_to_hunt
 	elif mode == Mode.EAT:
 		_resume_eat = rig.stop_eating()
+	elif mode == Mode.HUNT:
+		_resume_hunt = true
 	_stop_walking()
 	rig.make_happy()
 	mode = Mode.IDLE
 	_mode_timer = randf_range(3.0, 5.0)
+
+
+## A tap on the floor: near the ball the ball rolls there and the cat chases it,
+## otherwise the cat walks there.
+func on_floor_tapped(world_pos: Vector2) -> void:
+	var ball: BallPlaceholder = room.ball
+	if ball and world_pos.distance_to(ball.position) < BALL_TAP_RADIUS:
+		ball.roll_to(world_pos)
+		_ball_dest = room.clamp_walk_point(world_pos)
+		chase_ball()
+	else:
+		walk_to(world_pos)
+
+
+func chase_ball() -> void:
+	if rig.current_pose != CatRig.POSE_STAND or mode in [Mode.SIT, Mode.LIE, Mode.SLEEP]:
+		_hunt_after_stand = true
+		_stand_up()
+		return
+	if mode == Mode.EAT:
+		rig.stop_eating()
+	rig.cancel_action()
+	_go_hunt(true)
 
 
 func walk_to(world_pos: Vector2) -> void:
@@ -95,6 +143,8 @@ func _process(delta: float) -> void:
 			_process_walk(delta)
 		Mode.SIT, Mode.LIE, Mode.SLEEP:
 			_process_rest(delta)
+		Mode.HUNT:
+			_process_hunt(delta)
 		Mode.EAT:
 			if _eat_pending > 0.0:
 				# wait for the turn towards the bowl, then eat
@@ -125,6 +175,21 @@ func _process_idle(delta: float) -> void:
 		_has_target = false
 		_begin_walk(_target)
 		return
+	if _stretch_after_stand and rig.current_pose == CatRig.POSE_STAND:
+		# just woke up: sleepy, big stretch, yawn ... then a walk
+		_stretch_after_stand = false
+		_walk_after_stretch = true
+		rig.stretch()
+		return
+	if _walk_after_stretch:
+		_walk_after_stretch = false
+		_begin_walk(_random_floor_point())
+		return
+	if (_hunt_after_stand or _resume_hunt) and rig.current_pose == CatRig.POSE_STAND:
+		_hunt_after_stand = false
+		_resume_hunt = false
+		_go_hunt(room.ball.is_rolling())
+		return
 	# continue after purring
 	if _resume_eat > 0.0:
 		mode = Mode.EAT
@@ -141,7 +206,9 @@ func _process_idle(delta: float) -> void:
 	var r: float = randf()
 	if r < EAT_CHANCE and room.food_bowl:
 		_go_eat()
-	elif r < 0.6:
+	elif r < EAT_CHANCE + HUNT_CHANCE and room.ball:
+		_go_hunt(false)   # notices the ball
+	elif r < 0.65:
 		_begin_walk(_random_floor_point())
 	elif r < 0.87:
 		_rest(Mode.SIT)
@@ -170,8 +237,9 @@ func _process_rest(delta: float) -> void:
 			else:
 				_stand_up()
 		Mode.SLEEP:
-			# wakes up: first sits, the next decision decides what to do
-			_rest(Mode.SIT)
+			# wakes up: gets up, stretches and yawns, then goes for a walk
+			_stretch_after_stand = true
+			_stand_up()
 
 
 func _rest(m: Mode) -> void:
@@ -221,8 +289,11 @@ func _go_eat() -> void:
 
 
 ## The cat walks straight to the point (any direction).
-func _begin_walk(p: Vector2, to_eat: bool = false) -> void:
+func _begin_walk(p: Vector2, to_eat: bool = false, to_hunt: bool = false) -> void:
 	_going_to_eat = to_eat
+	_going_to_hunt = to_hunt
+	if not to_hunt:
+		_speed_mult = 1.0
 	_path.clear()
 	if p.distance_to(position) < 12.0:
 		if absf(p.x - position.x) > 2.0 and rig.view == CatRig.View.SIDE:
@@ -244,6 +315,83 @@ func _view_for(d: Vector2) -> CatRig.View:
 	return CatRig.View.FRONT if d.y > 0.0 else CatRig.View.BACK
 
 
+# --- playing with the ball (placeholder) ------------------------------------------------
+
+func _ball_rest_pos() -> Vector2:
+	var ball: BallPlaceholder = room.ball
+	if ball.is_rolling() and _ball_dest != Vector2.INF:
+		return _ball_dest
+	return ball.position
+
+
+## Goes to a spot beside the ball (same depth) to hunt it from the side.
+func _go_hunt(chase: bool) -> void:
+	var b: Vector2 = _ball_rest_pos()
+	var h: float = rig.cat_height * room.depth_scale(b.y)
+	var side: float = signf(position.x - b.x)
+	if side == 0.0:
+		side = -rig.facing
+	var spot := Vector2(b.x + side * HUNT_START_DIST * h, b.y - 2.0)
+	if spot.x < Room.WALK_X_MARGIN or spot.x > Room.ROOM_WIDTH - Room.WALK_X_MARGIN:
+		spot.x = b.x - side * HUNT_START_DIST * h
+	_speed_mult = CHASE_SPEED_MULT if chase else 1.0
+	_begin_walk(room.clamp_walk_point(spot), false, true)
+	if mode != Mode.WALK:
+		_start_hunt()
+
+
+func _start_hunt() -> void:
+	var b: Vector2 = room.ball.position
+	rig.turn_to(signf(b.x - position.x))
+	rig.start_hunt()
+	mode = Mode.HUNT
+	_hunt_step = 1
+	_hunt_t = 0.0
+	_ball_dest = Vector2.INF
+
+
+func _process_hunt(delta: float) -> void:
+	var ball: BallPlaceholder = room.ball
+	var depth: float = room.depth_scale(position.y)
+	var h: float = rig.cat_height * depth
+	_hunt_t += delta
+	match _hunt_step:
+		1:
+			# sneaking low towards the ball
+			if rig.is_view_changing():
+				return
+			var dx: float = ball.position.x - position.x
+			if ball.is_rolling() or absf(ball.position.y - position.y) > 0.5 * h \
+					or signf(dx) != rig.facing:
+				rig.cancel_action()
+				_go_hunt(true)
+				return
+			if absf(dx) <= POUNCE_DIST * h or _hunt_t > 4.0:
+				rig.hunt_wiggle(randi_range(2, 3))
+				_hunt_step = 2
+				return
+			position.x += signf(dx) * minf(SNEAK_SPEED * depth * delta, absf(dx))
+		2:
+			# wiggling the bottom, then the jump
+			if rig.is_hunt_ready():
+				_jump = rig.pounce()
+				_hunt_t = 0.0
+				_jump_from = position.x
+				_jump_to = ball.position.x - rig.facing * 0.15 * h
+				_ball_kicked = false
+				_hunt_step = 3
+		3:
+			# flies during the jump frame; the ball rolls away
+			var u: float = clampf((_hunt_t - _jump.x) / _jump.y, 0.0, 1.0)
+			position.x = lerpf(_jump_from, _jump_to, u * u * (3.0 - 2.0 * u))
+			if not _ball_kicked and u > 0.6:
+				_ball_kicked = true
+				ball.kick(Vector2(rig.facing * randf_range(260.0, 420.0), randf_range(-70.0, 70.0)))
+			if rig.current_action() == &"" and not rig.is_busy():
+				mode = Mode.IDLE
+				_mode_timer = randf_range(1.5, 3.5)
+
+
 func _start_eating() -> void:
 	var bowl: Vector2 = room.food_bowl.position
 	var dir: float = signf(bowl.x - position.x)
@@ -255,6 +403,7 @@ func _start_eating() -> void:
 
 func _stop_walking() -> void:
 	_path.clear()
+	_speed_mult = 1.0
 	rig.walk_velocity = Vector2.ZERO
 	if mode == Mode.WALK:
 		mode = Mode.IDLE
@@ -282,7 +431,7 @@ func _process_walk(delta: float) -> void:
 		_drive_rig()
 		return
 	var depth: float = room.depth_scale(position.y)
-	var max_speed: float = walk_speed * depth
+	var max_speed: float = walk_speed * depth * _speed_mult
 	var desired: float = minf(max_speed, dist * 2.2)   # smooth start and arrival
 	_speed_now = move_toward(_speed_now, desired, delta * 300.0)
 	if dist < 2.0 or (_speed_now < 4.0 and dist < 6.0):
@@ -295,6 +444,10 @@ func _process_walk(delta: float) -> void:
 		if _going_to_eat:
 			_going_to_eat = false
 			_start_eating()
+		elif _going_to_hunt:
+			_going_to_hunt = false
+			_speed_mult = 1.0
+			_start_hunt()
 		return
 	position += to_target / dist * minf(_speed_now * delta, dist)
 	_drive_rig()
