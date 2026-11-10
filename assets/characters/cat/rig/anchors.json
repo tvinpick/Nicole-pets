@@ -1139,5 +1139,33 @@
    581,
    967
   ]
+ },
+ "walk_front": {
+  "canvas": [
+   420,
+   520
+  ],
+  "paw_line_y": 512,
+  "centre_x": 210,
+  "frame_heights": [
+   494,
+   498,
+   498,
+   495
+  ]
+ },
+ "walk_back": {
+  "canvas": [
+   420,
+   640
+  ],
+  "paw_line_y": 632,
+  "centre_x": 210,
+  "frame_heights": [
+   608,
+   613,
+   613,
+   605
+  ]
  }
 }

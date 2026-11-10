@@ -95,22 +95,24 @@ var _body_flip: float = 1.0
 var _head_flip: float = 1.0
 var _turn_t: float = -1.0
 var _turn_from: float = 1.0
-var _front_visible: bool = false
+var _turn_dir: float = 1.0
+var _turn_stage: int = 0
 ## Views: side rig (_group) for walking left/right, front rig for walking towards the
 ## viewer, back rig for walking away (towards the wall).
 enum View { SIDE, FRONT, BACK }
 var view: View = View.SIDE
 var _view_from: View = View.SIDE
 var _view_t: float = -1.0
-const VIEW_FADE := 0.22
+const VIEW_FADE := 0.24
 var _front_rig: CatFrontalRig
 var _back_rig: CatFrontalRig
 ## walking velocity in this node's local px/s (world velocity / depth scale)
 var walk_velocity: Vector2 = Vector2.ZERO
 ## turn = short pause, side squash, whole cat in front view, side view the other way
-const TURN_PAUSE := 0.12
-const TURN_SQUASH := 0.07
-const TURN_FRONT := 0.26
+## turn = short pause, cross-fade to the front view, short hold, cross-fade back to the
+## side view facing the other way (always the whole cat, never mixed views)
+const TURN_PAUSE := 0.1
+const TURN_HOLD := 0.12
 
 var walk_speed: float = 0.0                # rig px / s, set by the controller
 var _walk_weight: float = 0.0
@@ -246,12 +248,12 @@ func _build() -> void:
 
 	_front_rig = CatFrontalRig.new()
 	_front_rig.name = "FrontRig"
-	_front_rig.setup(false, _make_tail_line(true), _make_tail_line(false))
+	_front_rig.setup(false)
 	_front_rig.visible = false
 	add_child(_front_rig)
 	_back_rig = CatFrontalRig.new()
 	_back_rig.name = "BackRig"
-	_back_rig.setup(true, _make_tail_line(true), _make_tail_line(false))
+	_back_rig.setup(true)
 	_back_rig.visible = false
 	add_child(_back_rig)
 
@@ -396,11 +398,12 @@ func is_turning() -> bool:
 
 
 func turn_to(dir: float) -> void:
-	if signf(dir) == facing or _turn_t >= 0.0:
+	if signf(dir) == facing or _turn_t >= 0.0 or view != View.SIDE:
 		return
 	_turn_from = facing
-	facing = signf(dir)
+	_turn_dir = signf(dir)
 	_turn_t = 0.0
+	_turn_stage = 0
 
 
 func set_pose(target: StringName) -> void:
@@ -464,31 +467,20 @@ func _update_rig(delta: float) -> void:
 	elif _walk_weight <= 0.0 and _settling < 0.0 and _feet_need_settle():
 		_start_settle()
 
-	# turning: pause -> squash side view -> whole cat in front view -> side view the other way.
-	# Head and body always use the same view; the controller never turns while walking.
-	var draw_dir: float = facing
-	var squash: float = 1.0
-	_front_visible = false
+	# turning: pause -> front view -> side view the other way (cross-fades of the whole cat)
 	if _turn_t >= 0.0:
 		_turn_t += delta
-		var t: float = _turn_t
-		var t1: float = TURN_PAUSE
-		var t2: float = t1 + TURN_SQUASH
-		var t3: float = t2 + TURN_FRONT
-		var t4: float = t3 + TURN_SQUASH
-		if t < t1:
-			draw_dir = _turn_from
-		elif t < t2:
-			draw_dir = _turn_from
-			squash = lerpf(1.0, 0.72, _ease((t - t1) / TURN_SQUASH))
-		elif t < t3:
-			_front_visible = true
-		elif t < t4:
-			squash = lerpf(0.72, 1.0, _ease((t - t3) / TURN_SQUASH))
-		else:
+		if _turn_stage == 0 and _turn_t >= TURN_PAUSE:
+			_turn_stage = 1
+			set_view(View.FRONT)
+		elif _turn_stage == 1 and _turn_t >= TURN_PAUSE + VIEW_FADE + TURN_HOLD:
+			_turn_stage = 2
+			facing = _turn_dir
+			set_view(View.SIDE)
+		elif _turn_stage == 2 and _view_t < 0.0:
 			_turn_t = -1.0
-	_body_flip = draw_dir * squash
-	_head_flip = _body_flip
+	_body_flip = facing
+	_head_flip = facing
 	var turn_squash: float = 0.0
 
 	_pose_torso(turn_squash)
@@ -509,14 +501,14 @@ func _view_node(v: View) -> CanvasItem:
 
 
 func _apply_views(delta: float) -> void:
-	# weights: during a cross-fade the incoming view is fully opaque underneath and the
-	# outgoing one fades out on top -> the cat never becomes see-through
+	# cross-fade: the incoming view appears underneath during the first 60% and the
+	# outgoing one (on top) fades out during the last 60% -> no pop, (almost) never
+	# see-through, and both views are mixed only for a moment
 	var w: Dictionary[View, float] = {View.SIDE: 0.0, View.FRONT: 0.0, View.BACK: 0.0}
-	if _front_visible:
-		w[View.FRONT] = 1.0
-	elif _view_t >= 0.0:
-		w[view] = 1.0
-		w[_view_from] = 1.0 - _ease(clampf(_view_t, 0.0, 1.0))
+	if _view_t >= 0.0:
+		var t: float = clampf(_view_t, 0.0, 1.0)
+		w[view] = _ease(clampf(t / 0.6, 0.0, 1.0))
+		w[_view_from] = 1.0 - _ease(clampf((t - 0.4) / 0.6, 0.0, 1.0))
 		move_child(_view_node(_view_from), -1)
 	else:
 		w[view] = 1.0
@@ -538,11 +530,10 @@ func _apply_views(delta: float) -> void:
 			continue
 		var sc: float = rig_scale * _stand_height_rig / r.stand_height
 		r.scale = Vector2(sc, sc)
+		# while mixing with the side view, keep the head roughly in the same place
+		var head_shift: float = w[View.SIDE] if _view_t >= 0.0 else 0.0
+		r.position.x = facing * HEAD_X * rig_scale * 0.8 * head_shift
 		r.walk_speed = absf(walk_velocity.y) / sc if view == rv else 0.0
-		if _front_visible and rv == View.FRONT:
-			var p: float = clampf((_turn_t - TURN_PAUSE - TURN_SQUASH) / TURN_FRONT, 0.0, 1.0)
-			var pop: float = 1.0 + 0.03 * sin(p * PI)
-			r.scale = Vector2(sc / pop, sc * pop)
 		r.animate(delta, eye, twitch, _ear_which, happy, flick)
 	if current_pose == POSE_STAND and _trans_t < 0.0:
 		_group.visible = w[View.SIDE] > 0.0
@@ -780,7 +771,7 @@ func _apply() -> void:
 	_group.scale = Vector2.ONE * rig_scale
 	# shadow follows the visible pose (blended during transitions)
 	var e: Vector3 = POSE_EXTENTS[current_pose]
-	if _front_visible or view != View.SIDE:
+	if view != View.SIDE:
 		e = Vector3(-230, 230, 860)
 	if _trans_t >= 0.0:
 		var e2: Vector3 = POSE_EXTENTS[_trans_to]

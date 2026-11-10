@@ -28,8 +28,23 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_on_viewport_resized)
 
 
+var _start_factor: float = 0.0
+var _start_focus_x: float = 0.0
+var _user_moved: bool = false
+
+
 ## Initial view: zoom = factor x "whole room height", bottom of the room at the screen bottom.
+## Re-applied on window resizes (Android may resize/rotate the window after start-up)
+## until the player touches the screen.
 func start_view(zoom_factor: float, focus_x: float) -> void:
+	_start_factor = zoom_factor
+	_start_focus_x = focus_x
+	_apply_start_view()
+
+
+func _apply_start_view() -> void:
+	var zoom_factor: float = _start_factor
+	var focus_x: float = _start_focus_x
 	_target_zoom = clampf(min_zoom() * zoom_factor, min_zoom(), max_zoom())
 	zoom = Vector2.ONE * _target_zoom
 	var half: Vector2 = get_viewport_rect().size * 0.5 / _target_zoom
@@ -38,6 +53,9 @@ func start_view(zoom_factor: float, focus_x: float) -> void:
 
 
 func _on_viewport_resized() -> void:
+	if _start_factor > 0.0 and not _user_moved:
+		_apply_start_view()
+		return
 	_target_zoom = clampf(_target_zoom, min_zoom(), max_zoom())
 	zoom = Vector2.ONE * clampf(zoom.x, min_zoom(), max_zoom())
 	_clamp_position()
@@ -56,6 +74,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
 		if t.pressed:
+			_user_moved = true
 			_touches[t.index] = t.position
 			_velocity = Vector2.ZERO
 			if _touches.size() == 1:
@@ -99,6 +118,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		if mb.pressed:
+			_user_moved = true
 		if mb.pressed and (mb.button_index == MOUSE_BUTTON_WHEEL_UP or mb.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 			var f: float = 1.12 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.12
 			_target_zoom = clampf(_target_zoom * f, min_zoom(), max_zoom())

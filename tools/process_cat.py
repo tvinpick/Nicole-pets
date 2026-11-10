@@ -135,6 +135,47 @@ def make_front_view() -> dict:
             "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]}
 
 
+# 4-frame walk sheets (front = towards the viewer, back = away). Frames are cut by the
+# transparent gaps, aligned by the paw line (lowest pixel) and the head centre.
+WALK_CANVAS = {"front": (420, 520), "back": (420, 640)}
+WALK_MARGIN = 8
+
+
+def make_walk_frames() -> dict:
+    info = {}
+    for view, (cw, ch) in WALK_CANVAS.items():
+        sheet = np.asarray(Image.open(os.path.join(CAT, f"cat_walk_{view}.png")).convert("RGBA"))
+        a = sheet[..., 3] > 20
+        col = a.any(axis=0)
+        runs, start = [], None
+        for x, v in enumerate(col):
+            if v and start is None:
+                start = x
+            elif not v and start is not None:
+                runs.append((start, x))
+                start = None
+        if start is not None:
+            runs.append((start, len(col)))
+        assert len(runs) == 4, f"{view}: expected 4 frames, found {len(runs)}"
+        heights = []
+        for i, (x0, x1) in enumerate(runs, start=1):
+            sub = a[:, x0:x1]
+            ys, xs = np.nonzero(sub)
+            top, bottom = ys.min(), ys.max()
+            head = sub[top:top + int((bottom - top) * 0.35)]
+            hcx = x0 + np.nonzero(head)[1].mean()
+            # place: head centre -> canvas centre, paw line -> canvas bottom - margin
+            dx = int(round(cw / 2 - hcx))
+            dy = int(ch - WALK_MARGIN - 1 - bottom)
+            out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+            out.alpha_composite(Image.fromarray(sheet[:, x0:x1].copy(), "RGBA"), (x0 + dx, dy))
+            out.save(os.path.join(OUT, f"walk_{view}_{i}.png"), optimize=True)
+            heights.append(int(bottom - top))
+        info[f"walk_{view}"] = {"canvas": [cw, ch], "paw_line_y": ch - WALK_MARGIN,
+                                "centre_x": cw // 2, "frame_heights": heights}
+    return info
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     info = {}
@@ -154,6 +195,7 @@ def main() -> None:
             Image.fromarray(fill_only(src), "RGBA").save(os.path.join(OUT, fn[:-4] + "_fill.png"), optimize=True)
             info[fn[:-4]] = anchors(src)
     info["front_view"] = make_front_view()
+    info.update(make_walk_frames())
     with open(os.path.join(OUT, "anchors.json"), "w") as f:
         json.dump(info, f, indent=1)
     print("ok", len(PARTS), "fill textures")

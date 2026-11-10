@@ -1,6 +1,10 @@
 extends Node2D
 ## Room + cat test scene.
 
+## Start zoom relative to "the whole room height fits the screen", anchored to the
+## bottom of the room (1.5x closer than the previous 1.5x default).
+const START_ZOOM: float = 2.25
+
 @onready var room: Room = $Room
 @onready var cat: Cat = $Actors/Cat
 @onready var camera: CameraRig = $Camera
@@ -10,7 +14,11 @@ extends Node2D
 func _ready() -> void:
 	camera.room_size = Vector2(Room.ROOM_WIDTH, Room.ROOM_HEIGHT)
 	# start closer (~1.5x), aligned to the bottom of the room, around the cat
-	camera.start_view(1.5, cat.position.x + 120.0)
+	camera.start_view(START_ZOOM, cat.position.x)
+	# once more after the first frames: the window size on Android is final only then
+	get_tree().create_timer(0.3).timeout.connect(func() -> void:
+		if not camera.get("_user_moved"):
+			camera.start_view(START_ZOOM, cat.position.x))
 	camera.tapped.connect(_on_tapped)
 	fps_label.visible = OS.is_debug_build()
 
@@ -53,6 +61,7 @@ func _dev_capture() -> void:
 				var z: float = a.substr(7).to_float()
 				camera.zoom = Vector2.ONE * z
 				camera.set("_target_zoom", z)
+				camera.set("_user_moved", true)
 				camera.position = cat.position + Vector2(0.0, -40.0)
 			elif a.begins_with("--pose="):
 				cat.rig.set_pose(StringName(a.substr(7)))

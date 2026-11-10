@@ -206,6 +206,9 @@ func _stop_walking() -> void:
 func _process_walk(delta: float) -> void:
 	var to_target: Vector2 = _target - position
 	var dist: float = to_target.length()
+	if rig.is_turning():
+		_drive_rig()
+		return
 	var want: CatRig.View = _view_for(to_target)
 	if want == CatRig.View.SIDE:
 		var dir_x: float = signf(to_target.x)
