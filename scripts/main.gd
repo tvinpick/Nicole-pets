@@ -2,14 +2,15 @@ extends Node2D
 ## Room + cat test scene.
 
 @onready var room: Room = $Room
-@onready var cat: Cat = $Cat
+@onready var cat: Cat = $Actors/Cat
 @onready var camera: CameraRig = $Camera
 @onready var fps_label: Label = $Hud/Fps
 
 
 func _ready() -> void:
 	camera.room_size = Vector2(Room.ROOM_WIDTH, Room.ROOM_HEIGHT)
-	camera.position = Vector2(Room.ROOM_WIDTH * 0.5 - 300.0, Room.ROOM_HEIGHT * 0.5)
+	# start closer (~1.5x), aligned to the bottom of the room, around the cat
+	camera.start_view(1.5, cat.position.x + 120.0)
 	camera.tapped.connect(_on_tapped)
 	fps_label.visible = OS.is_debug_build()
 
@@ -52,14 +53,16 @@ func _dev_capture() -> void:
 				var z: float = a.substr(7).to_float()
 				camera.zoom = Vector2.ONE * z
 				camera.set("_target_zoom", z)
-				camera.position = cat.position + Vector2(0.0, -130.0)
+				camera.position = cat.position + Vector2(0.0, -40.0)
 			elif a.begins_with("--pose="):
 				cat.rig.set_pose(StringName(a.substr(7)))
 				cat.set_process(false)
 			elif a.begins_with("--walk"):
-				cat.walk_to(cat.position + Vector2(1200.0, 0.0))
+				cat.walk_to(cat.position + Vector2(700.0, 0.0))
 			elif a.begins_with("--back"):
-				cat.walk_to(cat.position + Vector2(-600.0, 0.0))
+				cat.walk_to(cat.position + Vector2(-400.0, 0.0))
+			elif a.begins_with("--deep"):
+				cat.walk_to(cat.position + Vector2(60.0, -130.0))
 			elif a.begins_with("--happy"):
 				cat.on_tapped()
 			elif a.begins_with("--still"):

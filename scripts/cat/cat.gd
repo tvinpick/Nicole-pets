@@ -5,7 +5,10 @@ extends Node2D
 
 enum Mode { IDLE, WALK, SIT, LIE, SLEEP }
 
-@export var walk_speed: float = 125.0          ## world px / s at depth scale 1
+@export var walk_speed: float = 70.0           ## world px / s at depth scale 1
+## Max angle of a walk segment against the horizontal: the cat has only side views,
+## so depth (screen y) changes only along gentle diagonals.
+const MAX_SLOPE_DEG: float = 25.0
 @export var room_path: NodePath
 
 var room: Room
@@ -13,6 +16,7 @@ var rig: CatRig
 var mode: Mode = Mode.IDLE
 var _target: Vector2
 var _has_target: bool = false
+var _path: Array[Vector2] = []
 var _mode_timer: float = 3.0
 var _speed_now: float = 0.0
 var _after_stand: Callable = Callable()
@@ -37,7 +41,7 @@ func _apply_depth() -> void:
 
 func contains_point(world_pos: Vector2) -> bool:
 	var local: Vector2 = to_local(world_pos)
-	return rig.hit_rect().grow(10.0).has_point(local)
+	return rig.hit_rect().grow(14.0).has_point(local)
 
 
 func on_tapped() -> void:
@@ -149,29 +153,52 @@ func _stand_up() -> void:
 
 
 func _random_floor_point() -> Vector2:
+	# mostly along the room; depth changes a little (always reachable by one diagonal)
+	var slope: float = tan(deg_to_rad(MAX_SLOPE_DEG)) * 0.9
 	for i in 10:
-		var dx: float = randf_range(350.0, 1300.0) * (1.0 if randf() < 0.5 else -1.0)
-		var p: Vector2 = room.clamp_walk_point(Vector2(position.x + dx,
-				randf_range(Room.WALK_Y_MIN, Room.WALK_Y_MAX)))
-		if absf(p.x - position.x) > 250.0:
+		var dx: float = randf_range(200.0, 900.0) * (1.0 if randf() < 0.5 else -1.0)
+		var dy: float = randf_range(-1.0, 1.0) * absf(dx) * slope * randf()
+		var p: Vector2 = room.clamp_walk_point(position + Vector2(dx, dy))
+		if absf(p.x - position.x) > 150.0:
 			return p
 	return room.clamp_walk_point(Vector2(Room.ROOM_WIDTH * 0.5, position.y))
 
 
+## Splits a walk into segments not steeper than MAX_SLOPE_DEG. If the target is
+## too deep for the horizontal distance, the cat walks a longer diagonal first and
+## then comes back along the room.
+func _plan_path(from: Vector2, to: Vector2) -> Array[Vector2]:
+	var slope: float = tan(deg_to_rad(MAX_SLOPE_DEG))
+	var dx: float = to.x - from.x
+	var dy: float = to.y - from.y
+	if absf(dy) <= absf(dx) * slope + 1.0:
+		return [to]
+	var run: float = absf(dy) / slope
+	var dir: float = signf(dx) if absf(dx) > 1.0 else rig.facing
+	var x1: float = from.x + dir * run
+	if x1 < Room.WALK_X_MARGIN or x1 > Room.ROOM_WIDTH - Room.WALK_X_MARGIN:
+		dir = -dir
+		x1 = from.x + dir * run
+	x1 = clampf(x1, Room.WALK_X_MARGIN, Room.ROOM_WIDTH - Room.WALK_X_MARGIN)
+	var mid := Vector2(x1, from.y + signf(dy) * absf(x1 - from.x) * slope)
+	if absf(to.x - mid.x) < 30.0:
+		return [mid]
+	return [mid, Vector2(to.x, mid.y)]
+
+
 func _begin_walk(p: Vector2) -> void:
-	var dx: float = p.x - position.x
-	# the body is side-view only: depth changes slowly relative to the horizontal walk
-	var max_dy: float = maxf(absf(dx) * 0.35, 0.0)
-	p.y = position.y + clampf(p.y - position.y, -max_dy, max_dy)
-	if absf(dx) < 25.0:
-		if absf(dx) > 2.0:
-			rig.turn_to(signf(dx))
+	_path = _plan_path(position, p)
+	if absf(_path[0].x - position.x) < 25.0 and _path.size() == 1:
+		if absf(_path[0].x - position.x) > 2.0:
+			rig.turn_to(signf(_path[0].x - position.x))
+		_path.clear()
 		return
-	_target = p
+	_target = _path.pop_front()
 	mode = Mode.WALK
 
 
 func _stop_walking() -> void:
+	_path.clear()
 	if mode == Mode.WALK:
 		mode = Mode.IDLE
 		_mode_timer = randf_range(2.0, 5.0)
@@ -194,9 +221,24 @@ func _process_walk(delta: float) -> void:
 	var depth: float = room.depth_scale(position.y)
 	var max_speed: float = walk_speed * depth
 	# smooth start and arrival
-	var desired: float = minf(max_speed, dist * 2.2)
+	var remaining: float = dist
+	var prev: Vector2 = _target
+	for q in _path:
+		remaining += prev.distance_to(q)
+		prev = q
+	var desired: float = minf(max_speed, remaining * 2.2)
+	if not _path.is_empty():
+		var next_dir: float = signf(_path[0].x - _target.x)
+		if next_dir != 0.0 and next_dir != rig.facing:
+			desired = minf(max_speed, dist * 2.2)   # will turn there: slow down
 	_speed_now = move_toward(_speed_now, desired, delta * 260.0)
-	if dist < 3.0 or (_speed_now < 6.0 and dist < 12.0):
+	if not _path.is_empty() and dist < 2.0:
+		# corner of the route: continue with the next segment (may need a turn)
+		position = _target
+		_target = _path.pop_front()
+		_drive_rig(delta)
+		return
+	if dist < 2.0 or (_speed_now < 4.0 and dist < 6.0):
 		position = _target
 		_speed_now = 0.0
 		mode = Mode.IDLE

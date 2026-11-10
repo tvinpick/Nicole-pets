@@ -16,9 +16,9 @@ const FLOOR_TOP: float = 701.0
 const WINDOW_TOP: float = 44.0
 const WINDOW_CENTER_IN_TEX: float = 381.5
 ## Where the cat may walk (feet y).
-const WALK_Y_MIN: float = 790.0
-const WALK_Y_MAX: float = 985.0
-const WALK_X_MARGIN: float = 220.0
+const WALK_Y_MIN: float = 740.0
+const WALK_Y_MAX: float = 1005.0
+const WALK_X_MARGIN: float = 120.0
 
 var window_sprite: Sprite2D
 var sky_sprite: Sprite2D
@@ -70,7 +70,6 @@ func is_floor_point(p: Vector2) -> bool:
 	return p.y >= FLOOR_TOP + 20.0 and p.y <= ROOM_HEIGHT and p.x >= 0.0 and p.x <= ROOM_WIDTH
 
 
-## Perspective-ish scale for things standing on the floor (further = smaller).
+## Perspective scale for things standing on the floor (see WorldScale).
 func depth_scale(y: float) -> float:
-	var t: float = clampf((y - WALK_Y_MIN) / (WALK_Y_MAX - WALK_Y_MIN), 0.0, 1.0)
-	return lerpf(0.9, 1.05, t)
+	return WorldScale.depth_scale(y)

@@ -5,7 +5,7 @@ extends Camera2D
 
 signal tapped(world_position: Vector2)
 
-@export var max_zoom_factor: float = 2.6
+@export var max_zoom_factor: float = 4.0
 @export var zoom_smoothing: float = 12.0
 @export var fling_friction: float = 4.0
 
@@ -26,6 +26,15 @@ func _ready() -> void:
 	_target_zoom = min_zoom()
 	zoom = Vector2.ONE * _target_zoom
 	get_viewport().size_changed.connect(_on_viewport_resized)
+
+
+## Initial view: zoom = factor x "whole room height", bottom of the room at the screen bottom.
+func start_view(zoom_factor: float, focus_x: float) -> void:
+	_target_zoom = clampf(min_zoom() * zoom_factor, min_zoom(), max_zoom())
+	zoom = Vector2.ONE * _target_zoom
+	var half: Vector2 = get_viewport_rect().size * 0.5 / _target_zoom
+	position = Vector2(focus_x, room_size.y - half.y)
+	_clamp_position()
 
 
 func _on_viewport_resized() -> void:

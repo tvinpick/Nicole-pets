@@ -19,8 +19,10 @@ const FUR_COLOR := Color8(166, 144, 148)
 const STRIPE_COLOR := Color8(124, 104, 110)
 const CREAM_COLOR := Color8(248, 226, 214)
 
-## rig px -> local px. The node itself is additionally scaled by the room depth.
-@export var rig_scale: float = 0.33
+## rig px -> local px, computed in _ready() from WorldScale (cat height in cm).
+## The node itself is additionally scaled by the room depth.
+var rig_scale: float = 0.1
+var _stand_height_rig: float = 860.0
 
 const POSE_STAND := &"stand"
 const POSE_SIT := &"sit"
@@ -93,15 +95,23 @@ var _body_flip: float = 1.0
 var _head_flip: float = 1.0
 var _turn_t: float = -1.0
 var _turn_from: float = 1.0
-const TURN_TIME := 0.55
+var _front_visible: bool = false
+var _front: Sprite2D
+const FRONT_TEX_PATH := "res://assets/characters/cat/rig/front_view.png"
+const FRONT_CENTER := Vector2(380, 975)     # body centre x / floor line in front_view.png
+const FRONT_HEIGHT := 859.0                 # floor -> ear tips in front_view.png
+## turn = short pause, side squash, whole cat in front view, side view the other way
+const TURN_PAUSE := 0.12
+const TURN_SQUASH := 0.07
+const TURN_FRONT := 0.26
 
 var walk_speed: float = 0.0                # rig px / s, set by the controller
 var _walk_weight: float = 0.0
 var _gait_phase: float = 0.0
 var _settling: float = -1.0
-const STRIDE := 120.0
-const DUTY := 0.6
-const STEP_LIFT := 34.0
+const STRIDE := 210.0        # rig px per step cycle (stance travel of one paw)
+const DUTY := 0.56           # part of the cycle a paw stays on the floor
+const STEP_LIFT := 40.0
 
 var _time: float = 0.0
 var _blink_timer: float = 2.0
@@ -148,6 +158,10 @@ const POSE_EXTENTS: Dictionary[StringName, Vector3] = {
 
 func _ready() -> void:
 	_build()
+	_update_rig(0.0)
+	_stand_height_rig = -minf(_ear_near.to_rig(Vector2(90.8, 11.0)).y,
+			_ear_far.to_rig(Vector2(101.4, 11.0)).y)
+	rig_scale = WorldScale.height_px(WorldScale.CAT_HEIGHT_CM) / _stand_height_rig
 	_update_rig(0.0)
 
 
@@ -223,6 +237,14 @@ func _build() -> void:
 		add_child(s)
 		_pose_sprites[pose_name] = s
 
+	_front = Sprite2D.new()
+	_front.name = "FrontView"
+	_front.texture = _tex(FRONT_TEX_PATH)
+	_front.centered = false
+	_front.offset = -FRONT_CENTER
+	_front.visible = false
+	add_child(_front)
+
 	_group = CanvasGroup.new()
 	_group.name = "Rig"
 	_group.fit_margin = 4.0
@@ -236,13 +258,13 @@ func _build() -> void:
 
 	# legs: textures were measured by tools/process_cat.py (rig/anchors.json)
 	var hind_far := _make_leg("side_hind_far", Vector2(112, 72), Vector2(64, 232),
-			Vector2(66, 34), Vector2(96, 160), Vector2(78, 205), false, 0.5)
+			Vector2(66, 34), Vector2(96, 160), Vector2(78, 205), false, 0.5)   # pairs with front_near
 	var front_far := _make_leg("side_front_far", Vector2(88, 56), Vector2(60, 212),
-			Vector2(60, 34), Vector2(95, 161), Vector2(200, 225), true, 0.75)
+			Vector2(60, 34), Vector2(95, 161), Vector2(200, 225), true, 0.04)  # pairs with hind_near
 	var hind_near := _make_leg("side_hind_near", Vector2(118, 74), Vector2(70, 236),
 			Vector2(72, 34), Vector2(92, 165), Vector2(118, 215), false, 0.0)
 	var front_near := _make_leg("side_front_near", Vector2(96, 56), Vector2(64, 214),
-			Vector2(62, 34), Vector2(93, 165), Vector2(150, 230), true, 0.25)
+			Vector2(62, 34), Vector2(93, 165), Vector2(150, 230), true, 0.54)
 	_legs = [hind_near, front_near, hind_far, front_far]
 
 	# tail: smooth bendable strip (two Line2D: contour + fill)
@@ -407,36 +429,52 @@ func _update_rig(delta: float) -> void:
 	elif _walk_weight <= 0.0 and _settling < 0.0 and _feet_need_settle():
 		_start_settle()
 
-	# turning: head leads, body follows
+	# turning: pause -> squash side view -> whole cat in front view -> side view the other way.
+	# Head and body always use the same view; the controller never turns while walking.
+	var draw_dir: float = facing
+	var squash: float = 1.0
+	_front_visible = false
 	if _turn_t >= 0.0:
-		_turn_t += delta / TURN_TIME
-		_head_flip = _flip_value(clampf(_turn_t / 0.55, 0.0, 1.0))
-		_body_flip = _flip_value(clampf((_turn_t - 0.3) / 0.7, 0.0, 1.0))
-		if _turn_t >= 1.0:
+		_turn_t += delta
+		var t: float = _turn_t
+		var t1: float = TURN_PAUSE
+		var t2: float = t1 + TURN_SQUASH
+		var t3: float = t2 + TURN_FRONT
+		var t4: float = t3 + TURN_SQUASH
+		if t < t1:
+			draw_dir = _turn_from
+		elif t < t2:
+			draw_dir = _turn_from
+			squash = lerpf(1.0, 0.72, _ease((t - t1) / TURN_SQUASH))
+		elif t < t3:
+			_front_visible = true
+		elif t < t4:
+			squash = lerpf(0.72, 1.0, _ease((t - t3) / TURN_SQUASH))
+		else:
 			_turn_t = -1.0
-			_head_flip = facing
-			_body_flip = facing
-	else:
-		_head_flip = facing
-		_body_flip = facing
-
+	_body_flip = draw_dir * squash
+	_head_flip = _body_flip
 	var turn_squash: float = 0.0
-	if _turn_t >= 0.0:
-		turn_squash = sin(clampf(_turn_t, 0.0, 1.0) * PI)
 
 	_pose_torso(turn_squash)
 	_pose_head()
 	_pose_legs(delta)
 	_pose_tail()
 	_apply()
+	_apply_front_view()
 
 
-## Turning: squash to a narrow silhouette, swap side, unsquash (never paper-thin).
-func _flip_value(p: float) -> float:
-	const NARROW := 0.3
-	if p < 0.5:
-		return _turn_from * lerpf(1.0, NARROW, _ease(p * 2.0))
-	return facing * lerpf(NARROW, 1.0, _ease((p - 0.5) * 2.0))
+func _apply_front_view() -> void:
+	_front.visible = _front_visible
+	if _front_visible:
+		_group.visible = false
+		var p: float = clampf((_turn_t - TURN_PAUSE - TURN_SQUASH) / TURN_FRONT, 0.0, 1.0)
+		var pop: float = 1.0 + 0.03 * sin(p * PI)
+		var sc: float = rig_scale * _stand_height_rig / FRONT_HEIGHT
+		_front.scale = Vector2(sc / pop, sc * pop)
+		_front.position = Vector2.ZERO
+	elif current_pose == POSE_STAND and _trans_t < 0.0:
+		_group.visible = true
 
 
 func _ease(t: float) -> float:
@@ -488,8 +526,11 @@ func _update_timers(delta: float) -> void:
 func _pose_torso(turn_squash: float) -> void:
 	var breath: float = sin(_time * TAU * 0.32)
 	var walk_bob: float = 0.0
+	var rock: float = 0.0
 	if _walk_weight > 0.0:
-		walk_bob = -absf(sin(_gait_phase * TAU * 2.0)) * 5.0 * _walk_weight
+		# two steps per cycle (diagonal pairs): body rises between foot strikes
+		walk_bob = -(0.5 - 0.5 * cos(_gait_phase * TAU * 2.0)) * 9.0 * _walk_weight
+		rock = sin(_gait_phase * TAU * 2.0) * 0.022 * _walk_weight
 	var hop: float = 0.0
 	if _happy_t >= 0.0:
 		var ht: float = _happy_t * 2.0
@@ -501,8 +542,8 @@ func _pose_torso(turn_squash: float) -> void:
 	# breathing: torso slightly expands, hips/chest stay attached
 	var bs: float = 1.0 + breath * 0.012
 	var tilt: float = deg_to_rad(-3.0) * _crouch
-	_hips.xf = Transform2D(tilt + HIPS_ROT, Vector2(1.0, bs), 0.0, Vector2(HIPS_POS.x, hips_y))
-	_chest.xf = Transform2D(tilt * 0.5 + breath * 0.004, Vector2(1.0 + breath * 0.006, bs),
+	_hips.xf = Transform2D(tilt + HIPS_ROT + rock, Vector2(1.0, bs), 0.0, Vector2(HIPS_POS.x, hips_y))
+	_chest.xf = Transform2D(tilt * 0.5 + breath * 0.004 - rock * 0.6, Vector2(1.0 + breath * 0.006, bs),
 			0.0, Vector2(CHEST_POS.x, chest_y))
 
 
@@ -510,11 +551,12 @@ func _pose_head() -> void:
 	var neck: Vector2 = _chest.to_rig(NECK_ON_CHEST)
 	_look_t += get_process_delta_time()
 	var idle_tilt: float = sin(_time * 0.7) * 0.03 + sin(_time * 0.23) * 0.04
-	var target_tilt: float = idle_tilt * (1.0 - _walk_weight) + sin(_gait_phase * TAU * 2.0) * 0.015 * _walk_weight
+	var target_tilt: float = idle_tilt * (1.0 - _walk_weight) + sin(_gait_phase * TAU * 2.0 + 0.9) * 0.035 * _walk_weight
+	var head_bob: float = cos(_gait_phase * TAU * 2.0 + 0.9) * 6.0 * _walk_weight
 	if _happy_t >= 0.0:
 		target_tilt = -0.12 + sin(_time * 9.0) * 0.05
 	_head_tilt = lerpf(_head_tilt, target_tilt, 0.15)
-	_head.xf = Transform2D(_head_tilt, Vector2.ONE, 0.0, neck + HEAD_OFFSET)
+	_head.xf = Transform2D(_head_tilt, Vector2.ONE, 0.0, neck + HEAD_OFFSET + Vector2(0.0, head_bob))
 	# ears
 	var twitch: float = 0.0
 	if _ear_t >= 0.0:
@@ -663,6 +705,8 @@ func _apply() -> void:
 	_group.scale = Vector2.ONE * rig_scale
 	# shadow follows the visible pose (blended during transitions)
 	var e: Vector3 = POSE_EXTENTS[current_pose]
+	if _front_visible:
+		e = Vector3(-230, 230, 860)
 	if _trans_t >= 0.0:
 		var e2: Vector3 = POSE_EXTENTS[_trans_to]
 		e = e.lerp(e2, _ease(clampf(_trans_t, 0.0, 1.0)))

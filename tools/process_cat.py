@@ -82,6 +82,59 @@ def anchors(rgba: np.ndarray) -> dict:
             "centre": [round(float(xs.mean()), 1), round(float(ys.mean()), 1)]}
 
 
+FRONT = "front"
+
+
+def _load(folder: str, name: str) -> np.ndarray:
+    return np.asarray(Image.open(os.path.join(CAT, folder, name + ".png")).convert("RGBA"))
+
+
+def _paste(canvas: Image.Image, arr: np.ndarray, centre_x: float, top: float, flip: bool = False) -> None:
+    im = Image.fromarray(arr, "RGBA")
+    if flip:
+        im = im.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    canvas.alpha_composite(im, (int(round(centre_x - im.width / 2)), int(round(top))))
+
+
+# Front view: (part, centre x, top y) on a canvas whose floor line is FRONT_GROUND.
+# Groups are drawn outline pass -> fill pass, so legs/neck/ears merge without seams.
+FRONT_W, FRONT_H, FRONT_GROUND = 760, 1000, 975
+FRONT_LAYOUT = [
+    # hind legs peek out behind the body (further away -> a little higher)
+    [("front_hind_far_paw", 512, 782, True), ("front_hind_near_paw", 248, 782, False)],
+    # front legs come out from under the chest bib
+    [("front_front_near_upper", 322, 560, False), ("front_front_far_upper", 438, 560, False),
+     ("front_front_near_paw", 316, 795, False), ("front_front_far_paw", 444, 795, False),
+     ("front_chest", 380, 445, False)],
+    # ears behind the head
+    [("front_ear_near", 268, 105, False), ("front_ear_far", 492, 107, False),
+     ("front_head", 380, 170, False)],
+]
+FRONT_FACE = [
+    ("front_blush_near", 285, 350), ("front_blush_far", 475, 350),
+    ("front_eyes_open", 380, 265),
+    ("front_whiskers_near", 255, 373), ("front_whiskers_far", 505, 373),
+    ("front_nose", 380, 357), ("front_mouth_closed", 380, 405),
+]
+
+
+def make_front_view() -> dict:
+    canvas = Image.new("RGBA", (FRONT_W, FRONT_H), (0, 0, 0, 0))
+    for group in FRONT_LAYOUT:
+        arrs = [(_load(FRONT, n), x, y, f) for n, x, y, f in group]
+        for a, x, y, f in arrs:
+            _paste(canvas, a, x, y, f)
+        for a, x, y, f in arrs:
+            _paste(canvas, fill_only(a), x, y, f)
+    for n, x, y in FRONT_FACE:
+        _paste(canvas, _load(FRONT, n), x, y)
+    out = np.asarray(canvas)
+    ys, xs = np.nonzero(out[..., 3] > 128)
+    canvas.save(os.path.join(OUT, "front_view.png"), optimize=True)
+    return {"size": [FRONT_W, FRONT_H], "ground_y": FRONT_GROUND,
+            "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())]}
+
+
 def main() -> None:
     os.makedirs(OUT, exist_ok=True)
     info = {}
@@ -92,6 +145,7 @@ def main() -> None:
     for name in ["pose_sit", "pose_lie", "pose_sleep", "pose_stand"]:
         src = np.asarray(Image.open(os.path.join(CAT, "pose", name + ".png")).convert("RGBA"))
         info[name] = anchors(src)
+    info["front_view"] = make_front_view()
     with open(os.path.join(OUT, "anchors.json"), "w") as f:
         json.dump(info, f, indent=1)
     print("ok", len(PARTS), "fill textures")

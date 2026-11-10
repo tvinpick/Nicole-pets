@@ -11,10 +11,13 @@ script = ExtResource("1_main")
 [node name="Room" type="Node2D" parent="."]
 script = ExtResource("2_room")
 
-[node name="Cat" type="Node2D" parent="."]
-position = Vector2(3000, 900)
+[node name="Actors" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Cat" type="Node2D" parent="Actors"]
+position = Vector2(3060, 900)
 script = ExtResource("3_cat")
-room_path = NodePath("../Room")
+room_path = NodePath("../../Room")
 
 [node name="Camera" type="Camera2D" parent="."]
 position = Vector2(3000, 512)

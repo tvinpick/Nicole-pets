@@ -14,6 +14,11 @@ Android-игра для ребёнка 6 лет (Godot 4.7.2, GDScript с тип
 - `tools/process_room.py`, `tools/process_cat.py` — подготовка текстур (numpy, scipy, pillow).
   Исходники (`kids_room_*.png`, `kitten_cutout_pngs.zip`, `side/`, `pose/`) не меняются.
 
+## Масштаб персонажей
+`scripts/world_scale.gd`: высота стены (пол → карниз) = 647 px, девочка 115 см ≈ 45% стены,
+отсюда `PX_PER_CM`. Кошка 33 см до кончиков ушей ≈ 13% стены. `CHARACTER_SCALE` — одна
+ручка для всех персонажей. Перспектива: 90% у стены → 100% у нижнего края.
+
 ## Сборка
 GitHub Actions (`.github/workflows/android-debug.yml`) на каждый push собирает debug APK
 (артефакт `nicole-pets-debug-apk`). Подпись — постоянный debug keystore из `keystore/`
