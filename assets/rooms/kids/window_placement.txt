@@ -1,0 +1,9 @@
+source_crop_x0=385
+source_crop_y0=44
+width=764
+height=609
+glass_x0=99
+glass_x1=664
+glass_y0=58
+glass_y1=502
+sill_top_y_in_room=585
