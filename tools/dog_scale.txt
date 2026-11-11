@@ -14,3 +14,5 @@ playbow 1.08
 jump 1.0
 bark 0.55
 scratch 0.53
+walk_side 1.05
+walk_front 0.72

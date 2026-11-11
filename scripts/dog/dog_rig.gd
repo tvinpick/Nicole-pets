@@ -23,8 +23,8 @@ const POSE_LOOK: Dictionary[StringName, StringName] = {
 const FRAMES_DIR := "res://assets/characters/dog/frames/"
 ## Reference: dog_wag frame 1 (standing, side) height in sheet px.
 const REF_HEIGHT := 375.0
-## Sheets that may be missing: walk_side -> the run frames at walking pace,
-## walk_front -> no front view (the puppy walks down in the side view).
+## Safety net if a sheet is ever missing: walk_side -> the run frames at walking
+## pace, walk_front -> no front view (walks down in the side view). Both sheets exist now.
 const FALLBACK: Dictionary[StringName, StringName] = {&"walk_side": &"run"}
 ## Drawn sideways (mirrored when facing left).
 const FRONTAL_LOOKS: Array[StringName] = [&"walk_front", &"walk_back"]

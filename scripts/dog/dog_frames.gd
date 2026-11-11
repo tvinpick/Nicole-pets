@@ -5,6 +5,8 @@ extends RefCounted
 ## k = sheet px -> reference px (dog_wag frame 1), matched by the body.
 
 const SETS: Dictionary = {
+	"walk_side": [6, Vector2(404, 345), 337.0, 202.0, 329.0, 1.05],
+	"walk_front": [6, Vector2(388, 453), 445.0, 194.0, 437.0, 0.72],
 	"walk_back": [6, Vector2(396, 493), 485.0, 198.0, 476.0, 0.77],
 	"run": [6, Vector2(398, 342), 334.0, 199.0, 319.0, 1.15],
 	"eat": [6, Vector2(394, 335), 327.0, 197.0, 316.0, 0.97],

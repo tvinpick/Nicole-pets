@@ -32,8 +32,8 @@ AIRBORNE_GAP = 25
 # name: (sheet file, frames, k, centre mode). Reference = dog_wag frame 1 (standing side).
 # A missing sheet is skipped (the game falls back, see DogRig.FALLBACK).
 SHEETS = {
-    "walk_side": ("dog_walk_side.png", 4, 1.0, "torso"),
-    "walk_front": ("dog_walk_front.png", 4, 1.0, "head"),
+    "walk_side": ("dog_walk_side.png", 6, 1.0, "torso"),
+    "walk_front": ("dog_walk_front.png", 6, 1.0, "head"),
     "walk_back": ("dog_walk_back.png", 6, 1.0, "head"),
     "run": ("dog_run.png", 6, 1.0, "torso"),
     "eat": ("dog_eat.png", 6, 1.0, "torso"),
