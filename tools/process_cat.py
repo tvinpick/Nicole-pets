@@ -158,6 +158,17 @@ SHEETS = {
 # a frame whose lowest pixel is this far above the sheet's floor line is airborne:
 # it keeps its height above the floor (e.g. the pounce jump)
 AIRBORNE_GAP = 30
+# Lying pictures: the tail curls towards the viewer below the body, so the lowest
+# pixel is not where the cat touches the floor. These are put on the floor by the
+# body/paws line instead (75th percentile of the lowest pixels across the body).
+GROUND_BY_BODY = {"pose_lie", "pose_sleep"}
+
+
+def _body_ground(sub: np.ndarray) -> int:
+    cols = [np.nonzero(sub[:, x])[0].max() for x in range(sub.shape[1]) if sub[:, x].any()]
+    n = len(cols)
+    body = sorted(cols[int(n * 0.2):int(n * 0.85)])
+    return int(body[int(len(body) * 0.75)])
 FRAME_MARGIN = 8
 
 
@@ -185,11 +196,16 @@ def make_frame_sets() -> dict:
         if src.startswith("pose/"):
             runs = [(runs[0][0], runs[-1][1])]
         frames = []
+        extra_below = 0
         for x0, x1 in runs:
             sub = a[:, x0:x1]
             ys, xs = np.nonzero(sub)
             top, bottom = ys.min(), ys.max()
             h = bottom - top
+            below = 0
+            if name in GROUND_BY_BODY:
+                below = bottom - _body_ground(sub)   # tail lying in front, below the paws
+                bottom -= below
             if mode == "head":
                 band = sub[top:top + int(h * 0.35)]
                 b0 = top
@@ -198,23 +214,25 @@ def make_frame_sets() -> dict:
                 band = sub[b0:top + int(h * 0.8)]
             cx = x0 + np.nonzero(band)[1].mean()
             frames.append((x0, x1, top, bottom, cx))
+            extra_below = max(extra_below, int(below))
         left = max(cx - x0 for x0, x1, t, b, cx in frames)
         right = max(x1 - cx for x0, x1, t, b, cx in frames)
         half = int(np.ceil(max(left, right))) + FRAME_MARGIN
         height = int(max(b - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN
         floor = max(b for x0, x1, t, b, cx in frames)
-        height = int(max(floor - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN
+        height = int(max(floor - t for x0, x1, t, b, cx in frames)) + 2 * FRAME_MARGIN + extra_below
         cw, ch = 2 * half, height
         heights = []
         for i, (x0, x1, top, bottom, cx) in enumerate(frames, start=1):
             out = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
             dx = int(round(half - cx))
             ground = bottom if floor - bottom < AIRBORNE_GAP else floor
-            dy = int(ch - FRAME_MARGIN - 1 - ground)
+            dy = int(ch - FRAME_MARGIN - extra_below - 1 - ground)
             out.alpha_composite(Image.fromarray(sheet[:, x0:x1].copy(), "RGBA"), (x0 + dx, dy))
             out.save(os.path.join(OUT, f"{name}_{i}.png"), optimize=True)
             heights.append(int(bottom - top))
-        info[name] = {"frames": len(frames), "canvas": [cw, ch], "paw_line_y": ch - FRAME_MARGIN,
+        info[name] = {"frames": len(frames), "canvas": [cw, ch],
+                      "paw_line_y": ch - FRAME_MARGIN - extra_below,
                       "centre_x": half, "frame_heights": heights, "k": k}
     _write_gd(info)
     return info
