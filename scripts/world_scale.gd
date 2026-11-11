@@ -23,6 +23,8 @@ const PX_PER_CM: float = WALL_HEIGHT_PX * GIRL_WALL_FRACTION / GIRL_HEIGHT_CM
 const CAT_REAL_HEIGHT_CM: float = 33.0
 const CAT_SIZE_FACTOR: float = 2.0
 const CAT_HEIGHT_CM: float = CAT_REAL_HEIGHT_CM * CAT_SIZE_FACTOR
+## Standing puppy (floor -> top of the head): ~12% taller than the standing cat.
+const DOG_HEIGHT_CM: float = CAT_HEIGHT_CM * 1.12
 
 ## Perspective on the floor: 90% at the wall, 100% at the bottom of the room/screen.
 const DEPTH_SCALE_AT_WALL: float = 0.9

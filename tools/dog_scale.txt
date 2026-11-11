@@ -1,0 +1,16 @@
+# Body-matched scale per puppy sheet: sheet px -> reference px (dog_wag frame 1).
+# Picked by comparing the head/body size of each sheet's first frame on a common
+# baseline (not the picture height: sitting/lying pictures are lower or wider).
+wag 1.0
+walk_back 0.77
+run 1.15
+eat 0.97
+happy 0.8
+sit 0.34
+lie 0.3
+sleep 0.38
+stretch 0.57
+playbow 1.08
+jump 1.0
+bark 0.55
+scratch 0.53

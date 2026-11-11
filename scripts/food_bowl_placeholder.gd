@@ -5,6 +5,9 @@ extends Node2D
 ## at the bowl's front-bottom centre (y-sorted with the characters).
 
 @export var width: float = 64.0
+@export var bowl_color: Color = Color(0.36, 0.62, 0.86)
+@export var rim_color: Color = Color(0.5, 0.75, 0.95)
+@export var fill_color: Color = Color(0.62, 0.42, 0.25)   ## food (brown) or water (blue)
 
 
 func _draw() -> void:
@@ -18,12 +21,12 @@ func _draw() -> void:
 	var body := PackedVector2Array([
 		Vector2(-w * 0.5, -h), Vector2(w * 0.5, -h), Vector2(w * 0.38, -h * 0.15),
 		Vector2(w * 0.3, 0), Vector2(-w * 0.3, 0), Vector2(-w * 0.38, -h * 0.15)])
-	draw_colored_polygon(body, Color(0.36, 0.62, 0.86))
+	draw_colored_polygon(body, bowl_color)
 	var outline := body.duplicate()
 	outline.append(body[0])
 	draw_polyline(outline, Color(0.2, 0.3, 0.45), 2.0, true)
 	# rim and food
 	draw_set_transform(Vector2(0, -h), 0.0, Vector2(1.0, 0.25))
-	draw_circle(Vector2.ZERO, w * 0.5, Color(0.5, 0.75, 0.95))
-	draw_circle(Vector2.ZERO, w * 0.42, Color(0.62, 0.42, 0.25))
+	draw_circle(Vector2.ZERO, w * 0.5, rim_color)
+	draw_circle(Vector2.ZERO, w * 0.42, fill_color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

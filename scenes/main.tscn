@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="Script" path="res://scripts/room.gd" id="2_room"]
 [ext_resource type="Script" path="res://scripts/cat/cat.gd" id="3_cat"]
 [ext_resource type="Script" path="res://scripts/camera_rig.gd" id="4_cam"]
+[ext_resource type="Script" path="res://scripts/dog/dog.gd" id="5_dog"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -17,6 +18,11 @@ y_sort_enabled = true
 [node name="Cat" type="Node2D" parent="Actors"]
 position = Vector2(3060, 900)
 script = ExtResource("3_cat")
+room_path = NodePath("../../Room")
+
+[node name="Dog" type="Node2D" parent="Actors"]
+position = Vector2(2790, 960)
+script = ExtResource("5_dog")
 room_path = NodePath("../../Room")
 
 [node name="Camera" type="Camera2D" parent="."]

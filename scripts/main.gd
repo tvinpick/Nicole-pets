@@ -1,5 +1,5 @@
 extends Node2D
-## Room + cat test scene.
+## Room with the cat and the puppy.
 
 ## Start zoom relative to "the whole room height fits the screen", anchored to the
 ## bottom of the room (1.5x closer than the previous 1.5x default).
@@ -7,6 +7,7 @@ const START_ZOOM: float = 2.25
 
 @onready var room: Room = $Room
 @onready var cat: Cat = $Actors/Cat
+@onready var dog: Dog = $Actors/Dog
 @onready var camera: CameraRig = $Camera
 @onready var fps_label: Label = $Hud/Fps
 
@@ -26,21 +27,44 @@ func _ready() -> void:
 	ball.position = Room.BALL_START
 	$Actors.add_child(ball)
 	room.ball = ball
+	# PLACEHOLDER puppy bowls (food + water), not the cat's bowl
+	room.dog_food_bowl = _placeholder_bowl("DogFoodBowlPlaceholder", Room.DOG_FOOD_POS,
+			Color(0.9, 0.45, 0.4), Color(0.97, 0.62, 0.55), Color(0.55, 0.35, 0.2))
+	room.dog_water_bowl = _placeholder_bowl("DogWaterBowlPlaceholder", Room.DOG_WATER_POS,
+			Color(0.9, 0.45, 0.4), Color(0.97, 0.62, 0.55), Color(0.45, 0.72, 0.95))
 	camera.room_size = Vector2(Room.ROOM_WIDTH, Room.ROOM_HEIGHT)
 	# start closer (~1.5x), aligned to the bottom of the room, around the cat
-	camera.start_view(START_ZOOM, cat.position.x)
+	camera.start_view(START_ZOOM, (cat.position.x + dog.position.x) * 0.5)
 	# once more after the first frames: the window size on Android is final only then
 	get_tree().create_timer(0.3).timeout.connect(func() -> void:
 		if not camera.get("_user_moved"):
-			camera.start_view(START_ZOOM, cat.position.x))
+			camera.start_view(START_ZOOM, (cat.position.x + dog.position.x) * 0.5))
 	camera.tapped.connect(_on_tapped)
 	fps_label.visible = OS.is_debug_build()
 
 
+func _placeholder_bowl(n: String, pos: Vector2, body: Color, rim: Color, fill: Color) -> Node2D:
+	var b := FoodBowlPlaceholder.new()
+	b.name = n
+	b.position = pos
+	b.bowl_color = body
+	b.rim_color = rim
+	b.fill_color = fill
+	b.width = 58.0
+	b.scale = Vector2.ONE * room.depth_scale(pos.y)
+	$Actors.add_child(b)
+	return b
+
+
 func _on_tapped(world_pos: Vector2) -> void:
-	if cat.contains_point(world_pos):
-		cat.on_tapped()
-	elif room.is_floor_point(world_pos):
+	# the pet drawn in front (lower on the floor) gets the tap first
+	var pets: Array[Node2D] = [cat, dog]
+	pets.sort_custom(func(a: Node2D, b: Node2D) -> bool: return a.position.y > b.position.y)
+	for p: Node2D in pets:
+		if p.call("contains_point", world_pos):
+			p.call("on_tapped")
+			return
+	if room.is_floor_point(world_pos):
 		cat.on_floor_tapped(world_pos)
 
 
@@ -94,6 +118,21 @@ func _dev_capture() -> void:
 				cat.position = Vector2(Room.BALL_START.x + 420.0, Room.BALL_START.y - 2.0)
 				cat.call("_go_hunt", false)
 				camera.position = Room.BALL_START + Vector2(160.0, -60.0)
+			elif a.begins_with("--dog="):
+				cat.set_process(false)
+				camera.position = dog.position + Vector2(0.0, -60.0)
+				var what: String = a.substr(6)
+				match what:
+					"walk": dog.call("_begin_walk", dog.position + Vector2(500.0, 0.0), false)
+					"run": dog.call("_begin_walk", dog.position + Vector2(700.0, 0.0), true)
+					"up": dog.call("_begin_walk", dog.position + Vector2(0.0, -180.0), false)
+					"down": dog.call("_begin_walk", dog.position + Vector2(0.0, 40.0), false)
+					"play": dog.call("_run_to_ball")
+					"eat": dog.call("_go_bowl", &"eat")
+					"sleep": dog.call("_rest", Dog.Mode.SLEEP)
+					"happy": dog.on_tapped()
+					_: dog.rig.play(StringName(what))
+				dog.set("_mode_timer", 999.0)
 			elif a.begins_with("--stretch"):
 				cat.rig.stretch()
 			elif a.begins_with("--up"):
@@ -108,7 +147,8 @@ func _dev_capture() -> void:
 				cat.set_process(false)
 	_frame += 1
 	if a_follow():
-		camera.position = cat.position + Vector2(0.0, -80.0)
+		var who: Node2D = dog if cat.is_processing() == false else cat
+		camera.position = who.position + Vector2(0.0, -80.0)
 	var save_now: bool = _frame == _shot_frames or (_shot_every > 0 and _frame % _shot_every == 0)
 	if save_now:
 		await RenderingServer.frame_post_draw

@@ -61,8 +61,25 @@ func _ready() -> void:
 	rig = CatRig.new()
 	rig.name = "Rig"
 	add_child(rig)
+	room.pets.append(self)
 	_apply_depth()
 	_mode_timer = randf_range(2.0, 4.0)
+
+
+## Floor ellipse half-size for going round other pets (PetSpace).
+func footprint() -> Vector2:
+	var h: float = rig.cat_height * scale.x
+	return Vector2(0.4 * h, 0.12 * h)
+
+
+## Another pet took the ball by force (PetSpace.take_ball).
+func yield_ball() -> void:
+	if mode == Mode.HUNT or _going_to_hunt:
+		_going_to_hunt = false
+		rig.cancel_action()
+		_stop_walking()
+		mode = Mode.IDLE
+		_mode_timer = randf_range(1.0, 2.5)
 
 
 func _apply_depth() -> void:
@@ -157,6 +174,9 @@ func _process(delta: float) -> void:
 				var away: float = -rig.facing
 				_begin_walk(room.clamp_walk_point(position + Vector2(away * randf_range(250.0, 500.0),
 						randf_range(-40.0, 40.0))))
+	if room.ball_user == self and mode != Mode.HUNT and not _going_to_hunt \
+			and not _resume_hunt and not _hunt_after_stand:
+		PetSpace.release_ball(room, self)
 	if mode != Mode.WALK:
 		_speed_now = move_toward(_speed_now, 0.0, delta * 400.0)
 		rig.walk_velocity = Vector2.ZERO
@@ -186,9 +206,10 @@ func _process_idle(delta: float) -> void:
 		_begin_walk(_random_floor_point())
 		return
 	if (_hunt_after_stand or _resume_hunt) and rig.current_pose == CatRig.POSE_STAND:
+		var forced: bool = _hunt_after_stand
 		_hunt_after_stand = false
 		_resume_hunt = false
-		_go_hunt(room.ball.is_rolling())
+		_go_hunt(room.ball.is_rolling(), forced)
 		return
 	# continue after purring
 	if _resume_eat > 0.0:
@@ -206,7 +227,7 @@ func _process_idle(delta: float) -> void:
 	var r: float = randf()
 	if r < EAT_CHANCE and room.food_bowl:
 		_go_eat()
-	elif r < EAT_CHANCE + HUNT_CHANCE and room.ball:
+	elif r < EAT_CHANCE + HUNT_CHANCE and room.ball and room.ball_user == null:
 		_go_hunt(false)   # notices the ball
 	elif r < 0.65:
 		_begin_walk(_random_floor_point())
@@ -325,7 +346,12 @@ func _ball_rest_pos() -> Vector2:
 
 
 ## Goes to a spot beside the ball (same depth) to hunt it from the side.
-func _go_hunt(chase: bool) -> void:
+func _go_hunt(chase: bool, force: bool = false) -> void:
+	# one pet plays with the ball at a time (a tap by the child always wins)
+	if not PetSpace.take_ball(room, self, force or chase):
+		mode = Mode.IDLE
+		_mode_timer = randf_range(1.0, 2.0)
+		return
 	var b: Vector2 = _ball_rest_pos()
 	var h: float = rig.cat_height * room.depth_scale(b.y)
 	var side: float = signf(position.x - b.x)
@@ -449,7 +475,9 @@ func _process_walk(delta: float) -> void:
 			_speed_mult = 1.0
 			_start_hunt()
 		return
-	position += to_target / dist * minf(_speed_now * delta, dist)
+	# go round the other pets (PetSpace)
+	position += PetSpace.steer(room, self, to_target / dist) * minf(_speed_now * delta, dist)
+	PetSpace.separate(room, self)
 	_drive_rig()
 
 

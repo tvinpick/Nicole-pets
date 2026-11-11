@@ -26,6 +26,15 @@ var food_bowl: Node2D
 ## PLACEHOLDER toy ball (created by main.gd inside the y-sorted Actors node).
 const BALL_START := Vector2(2550.0, 930.0)
 var ball: BallPlaceholder
+## who plays with the ball right now (one pet at a time), see PetSpace
+var ball_user: Node = null
+## all pets on the floor (for going round each other), see PetSpace
+var pets: Array[Node2D] = []
+## PLACEHOLDER puppy bowls: food + water, next to each other
+const DOG_FOOD_POS := Vector2(1900.0, 900.0)
+const DOG_WATER_POS := Vector2(1990.0, 905.0)
+var dog_food_bowl: Node2D
+var dog_water_bowl: Node2D
 var window_sprite: Sprite2D
 var sky_sprite: Sprite2D
 
